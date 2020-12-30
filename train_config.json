@@ -3,16 +3,16 @@
     "learning_rate": 0.0005,
     "optimizer": "adam",
     "n_epochs": 1000,
-    "batch_size": 64,
+    "batch_size": 256,
     "num_workers": 10,
     "fid_samples": 2048,
     "loss": {
         "nll": {
-            "weight": 0.9
+            "weight": 0.1
         },
         "kd": {
             "name": "mse",
-            "weight": 0.1
+            "weight": 0.9
         }
     },
     "student": {
@@ -64,5 +64,7 @@
         ]
     },
     "seed": 42,
-    "gpus": 1
+    "gpus": 1,
+    "to_test": false,
+    "track_grad_norm": false
 }
