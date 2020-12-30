@@ -1,2 +1,3 @@
 pytorch
 neptune-client
+cv2
