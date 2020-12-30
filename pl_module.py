@@ -180,7 +180,7 @@ class NFModel(pl.LightningModule):
         self.log("val_epoch_fid", metrics["epoch_fid"])
 
         self.sample_images()
-        self.neptune_logger.experiment.log_image("samples.png", x=plt.gcf())
+        self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
 
     def calc_fid(self, fid_mode) -> float:
         if fid_mode == "train":
