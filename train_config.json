@@ -4,7 +4,7 @@
     "optimizer": "adam",
     "n_epochs": 1000,
     "batch_size": 64,
-    "num_workers": 2,
+    "num_workers": 10,
     "fid_samples": 2048,
     "loss": {
         "nll": {
@@ -64,5 +64,5 @@
         ]
     },
     "seed": 42,
-    "gpus": 0
+    "gpus": 1
 }

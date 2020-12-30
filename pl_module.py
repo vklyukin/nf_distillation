@@ -67,7 +67,7 @@ class NFModel(pl.LightningModule):
         kd_weight = kd_loss_description["weight"]
 
         if kd_loss_description["name"].lower() == "mse":
-            kd_loss = nn.MSELoss()
+            kd_loss = nn.MSELoss(reduction="mean")
         else:
             raise NameError(
                 "Unkown KD loss name: {}".format(kd_loss_description["name"])
@@ -105,7 +105,7 @@ class NFModel(pl.LightningModule):
                 )
 
         return {
-            "nll": model_outputs["student_nll"],
+            "nll": model_outputs["student_nll"].mean(),
             "kd": kd_loss_value,
         }
 
