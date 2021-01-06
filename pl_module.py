@@ -13,7 +13,12 @@ from torchvision.utils import make_grid
 
 from data_utils import get_CIFAR10, postprocess
 from metrics.fid import calculate_fid
-from models import create_glow_model, gaussian_sample, FlowStep
+from models import (
+    create_glow_model,
+    gaussian_sample,
+    FlowStep,
+    inherit_permutation_matrix,
+)
 from losses import IdentityLoss
 
 
@@ -21,8 +26,8 @@ class NFModel(pl.LightningModule):
     def __init__(self, config: tp.Dict[str, tp.Any]):
         super().__init__()
         self.params = config
-        self.student = self.create_model(model_name="student")
         self.teacher = self.create_model(model_name="teacher")
+        self.student = self.create_model(model_name="student")
         (
             self.nll_loss,
             self.nll_weight,
@@ -47,7 +52,15 @@ class NFModel(pl.LightningModule):
                 if found_flowsteps % 4 == 0:
                     self.teacher_kd_indices.append(i)
 
-    def create_model(self, model_name) -> nn.Module:
+        if self.params["inherit_p"]:
+            inherit_permutation_matrix(
+                self.student,
+                self.teacher,
+                self.student_kd_indices,
+                self.teacher_kd_indices,
+            )
+
+    def create_model(self, model_name, teacher=None) -> nn.Module:
         """Create model from config"""
         if self.params["architecture"].lower() == "glow":
             return create_glow_model(self.params[model_name])
@@ -162,7 +175,7 @@ class NFModel(pl.LightningModule):
             "epoch_loss": epoch_loss,
             "epoch_nll": epoch_nll,
             "epoch_kd": epoch_kd,
-            "epoch_fid": epoch_kd,
+            "epoch_fid": epoch_fid,
         }
 
     def training_epoch_end(self, outputs):

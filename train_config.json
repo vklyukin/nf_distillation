@@ -3,6 +3,7 @@
     "learning_rate": 0.0005,
     "optimizer": "adam",
     "n_epochs": 1000,
+    "inherit_p": true,
     "batch_size": 64,
     "num_workers": 2,
     "fid_samples": 2048,

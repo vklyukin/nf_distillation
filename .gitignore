@@ -142,3 +142,6 @@ cython_debug/
 
 # data
 data/
+
+# training logs
+lightning_logs/

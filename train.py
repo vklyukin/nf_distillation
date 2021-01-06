@@ -55,9 +55,6 @@ def main(args=None):
         model_name = os.path.join(model_checkpoint.dirpath, k.split("/")[-1])
         neptune_logger.experiment.log_artifact(k, model_name)
 
-    if config["to_test"]:
-        trainer.test(test_dataloaders=model.test_dataloader())
-
 
 if __name__ == "__main__":
     main()
