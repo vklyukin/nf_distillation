@@ -148,6 +148,9 @@ def inherit_permutation_matrix(
                 student_kd_indices[current_common_layer_index]
             ].invconv.sign_s = (current_sign_s * teacher_layer.invconv.sign_s)
             current_common_layer_index += 1
+
+            current_permutation_matrix = None
+            current_sign_s = None
         elif isinstance(teacher_layer, FlowStep):
             if current_permutation_matrix is None:
                 current_permutation_matrix = teacher_layer.invconv.p
