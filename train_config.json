@@ -4,16 +4,16 @@
     "optimizer": "adam",
     "n_epochs": 1000,
     "inherit_p": true,
-    "batch_size": 64,
-    "num_workers": 2,
+    "batch_size": 128,
+    "num_workers": 10,
     "fid_samples": 2048,
     "loss": {
         "nll": {
-            "weight": 0.1
+            "weight": 1
         },
         "kd": {
             "name": "mse",
-            "weight": 0.9
+            "weight": 0
         }
     },
     "student": {
