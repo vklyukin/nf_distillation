@@ -46,7 +46,7 @@ def main(args=None):
         logger=neptune_logger,
         gpus=config["gpus"],
         weights_summary="full",
-        track_grad_norm=2,
+        track_grad_norm=2 if config["track_grad_norm"] else -1,
     )
     model = NFModel(config)
     trainer.fit(model)

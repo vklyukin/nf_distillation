@@ -36,7 +36,7 @@ class NFModel(pl.LightningModule):
         ) = self.create_loss_func()
 
         mean, logs = self.student.prior(None, None)
-        self.latent = gaussian_sample(mean, logs, 1)
+        self.register_buffer("latent", gaussian_sample(mean, logs, 1))
 
         self.student_kd_indices = []
         for i, layer in enumerate(self.student.flow.layers):
@@ -80,7 +80,7 @@ class NFModel(pl.LightningModule):
         kd_weight = kd_loss_description["weight"]
 
         if kd_loss_description["name"].lower() == "mse":
-            kd_loss = nn.MSELoss()
+            kd_loss = nn.MSELoss(reduction="mean")
         else:
             raise NameError(
                 "Unkown KD loss name: {}".format(kd_loss_description["name"])
@@ -104,7 +104,7 @@ class NFModel(pl.LightningModule):
 
     def loss(self, model_outputs, *args):
         """Count loss function value"""
-        kd_loss_value = 0
+        kd_loss_value = torch.tensor(0., device=self.device)
 
         if self.kd_weight > 0:
             student_z = model_outputs["student_z"]
@@ -118,7 +118,7 @@ class NFModel(pl.LightningModule):
                 )
 
         return {
-            "nll": model_outputs["student_nll"],
+            "nll": model_outputs["student_nll"].mean(),
             "kd": kd_loss_value,
         }
 
