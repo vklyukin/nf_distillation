@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import typing as tp
 
-from .flows import FlowNet, Glow
+from .flows import FlowNet, Glow, FlowStep
 from .layers import Split2d, gaussian_likelihood
 from .utils import uniform_binning_correction
 
@@ -128,3 +128,30 @@ def create_glow_model(config: tp.Dict[str, tp.Any]) -> GlowGetAllOutputs:
     model = GlowGetAllOutputs(**config)
     model.set_actnorm_init()
     return model
+
+
+def inherit_permutation_matrix(
+    student,
+    teacher,
+    student_kd_indices,
+    teacher_kd_indices,
+):
+    current_common_layer_index = 0
+    current_permutation_matrix = None
+    current_sign_s = None
+    for teacher_layer_id, teacher_layer in enumerate(teacher.flow.layers):
+        if teacher_layer_id == teacher_kd_indices[current_common_layer_index]:
+            student.flow.layers[
+                student_kd_indices[current_common_layer_index]
+            ].invconv.p = (current_permutation_matrix @ teacher_layer.invconv.p)
+            student.flow.layers[
+                student_kd_indices[current_common_layer_index]
+            ].invconv.sign_s = (current_sign_s * teacher_layer.invconv.sign_s)
+            current_common_layer_index += 1
+        elif isinstance(teacher_layer, FlowStep):
+            if current_permutation_matrix is None:
+                current_permutation_matrix = teacher_layer.invconv.p
+                current_sign_s = teacher_layer.invconv.sign_s
+            else:
+                current_permutation_matrix @= teacher_layer.invconv.p
+                current_sign_s *= teacher_layer.invconv.sign_s
