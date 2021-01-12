@@ -104,7 +104,7 @@ class NFModel(pl.LightningModule):
 
     def loss(self, model_outputs, *args):
         """Count loss function value"""
-        kd_loss_value = torch.tensor(0., device=self.device)
+        kd_loss_value = torch.tensor(0.0, device=self.device)
 
         if self.kd_weight > 0:
             student_z = model_outputs["student_z"]
