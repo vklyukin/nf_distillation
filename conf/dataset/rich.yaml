@@ -1,0 +1,4 @@
+data:
+  name: rich
+  data_path: ./data/
+  download: true
