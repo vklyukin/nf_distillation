@@ -291,7 +291,28 @@ class NFModel(pl.LightningModule):
         plt.axis("off")
 
     def get_histograms(self, generated, real):
-        pass
+        plt.figure(figsize=(10, 16))
+        plt.suptitle("Histograms comparison")
+
+        generated = generated.detach().cpu().numpy()
+        real = real.detach().cpu().numpy()
+
+        features_names = ["RichDLLe", "RichDLLk", "RichDLLmu", "RichDLLp", "RichDLLbt"]
+        num_of_subplots = len(features_names)
+
+        for feature_index, feature_name in enumerate(features_names):
+            plt.subplot(num_of_subplots, 1, feature_index + 1)
+
+            plt.title(feature_name)
+            plt.ylabel("density")
+
+            plt.hist(generated[:, feature_index], bins=100, label="gen", alpha=0.5)
+            plt.hist(real[:, feature_index], bins=100, label="real", alpha=0.5)
+
+            if feature_index == 0:
+                plt.legend()
+
+        plt.xlabel("bin")
 
     ####################
     # DATA RELATED HOOKS
