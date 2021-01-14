@@ -1,4 +1,6 @@
 data:
   name: rich
   data_path: ./data/
+  particle: pion
+  drop_weights: true
   download: true

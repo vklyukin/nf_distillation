@@ -19,6 +19,7 @@ class FlowNetGetAllOutputs(FlowNet):
         flow_permutation,
         flow_coupling,
         LU_decomposed,
+        is_1d=False,
     ):
         super().__init__(
             image_shape,
@@ -29,6 +30,7 @@ class FlowNetGetAllOutputs(FlowNet):
             flow_permutation,
             flow_coupling,
             LU_decomposed,
+            is_1d=is_1d,
         )
 
     def encode(self, z, logdet=0.0):
@@ -75,6 +77,7 @@ class GlowGetAllOutputs(Glow):
         y_classes,
         learn_top,
         y_condition,
+        is_1d=False,
     ):
         super().__init__(
             image_shape,
@@ -88,6 +91,7 @@ class GlowGetAllOutputs(Glow):
             y_classes,
             learn_top,
             y_condition,
+            is_1d=is_1d,
         )
 
         self.flow = FlowNetGetAllOutputs(
@@ -99,12 +103,19 @@ class GlowGetAllOutputs(Glow):
             flow_permutation=flow_permutation,
             flow_coupling=flow_coupling,
             LU_decomposed=LU_decomposed,
+            is_1d=is_1d,
         )
 
     def normal_flow(self, x, y_onehot):
-        b, c, h, w = x.shape
+        if self.is_1d:
+            b, c = x.shape
+        else:
+            b, c, h, w = x.shape
 
-        x, logdet = uniform_binning_correction(x)
+        if self.is_1d:
+            logdet = torch.zeros(b, device=x.device, dtype=torch.float32)
+        else:
+            x, logdet = uniform_binning_correction(x)
 
         z, objective = self.flow(x, logdet=logdet, reverse=False)
 
@@ -114,12 +125,17 @@ class GlowGetAllOutputs(Glow):
         objective += gaussian_likelihood(mean, logs, last_z)
 
         if self.y_condition:
-            y_logits = self.project_class(z.mean(2).mean(2))
+            if not self.is_1d:
+                last_z = last_z.mean(dim=[2, 3])
+            y_logits = self.project_class(last_z)
         else:
             y_logits = None
 
         # Full objective - converted to bits per dimension
-        bpd = (-objective) / (math.log(2.0) * c * h * w)
+        if self.is_1d:
+            bpd = (-objective) / (math.log(2.0) * c)
+        else:
+            bpd = (-objective) / (math.log(2.0) * c * h * w)
 
         return z, bpd, y_logits
 
