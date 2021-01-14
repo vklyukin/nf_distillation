@@ -17,8 +17,8 @@ def main(config: DictConfig):
     neptune_logger = NeptuneLogger(
         project_name=config["neptune"]["project_name"],
         experiment_name=config["neptune"]["experiment_name"],
-        tags=config["neptune"]["tags"],
-        params=config,
+        tags=OmegaConf.to_container(config["neptune"]["tags"]),
+        params=OmegaConf.to_container(config),
     )
 
     model_checkpoint = ModelCheckpoint(
