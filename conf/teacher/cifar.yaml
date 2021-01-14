@@ -1,0 +1,16 @@
+teacher:
+  is_1d: false
+  image_shape:
+    - 32
+    - 32
+    - 3
+  hidden_channels: 512
+  K: 32
+  L: 3
+  actnorm_scale: 1.0
+  flow_permutation: invconv
+  flow_coupling: affine
+  LU_decomposed: true
+  y_classes: 10
+  learn_top: false
+  y_condition: false

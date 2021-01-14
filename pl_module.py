@@ -11,7 +11,7 @@ import typing as tp
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
-from data_utils import get_CIFAR10, postprocess
+from data_utils import get_CIFAR10, get_RICH, postprocess
 from metrics.fid import calculate_fid
 from models import (
     create_glow_model,
@@ -35,8 +35,9 @@ class NFModel(pl.LightningModule):
             self.kd_weight,
         ) = self.create_loss_func()
 
-        mean, logs = self.student.prior(None, None)
-        self.register_buffer("latent", gaussian_sample(mean, logs, 1))
+        if not self.params["student"].get("is_1d", False):
+            mean, logs = self.student.prior(None, None)
+            self.register_buffer("latent", gaussian_sample(mean, logs, 1))
 
         self.student_kd_indices = []
         for i, layer in enumerate(self.student.flow.layers):
@@ -53,6 +54,12 @@ class NFModel(pl.LightningModule):
                     self.teacher_kd_indices.append(i)
 
         if self.params["inherit_p"]:
+            assert not self.params["teacher"].get(
+                "is_1d", False
+            ), "Teacher model must be 3-dimensional"
+            assert not self.params["student"].get(
+                "is_1d", False
+            ), "Student model must be 3-dimensional"
             inherit_permutation_matrix(
                 self.student,
                 self.teacher,
@@ -90,11 +97,24 @@ class NFModel(pl.LightningModule):
 
     def forward(self, batch):
         """Return latent variables and student NLL"""
-        x, y = batch
-        student_z, student_nll, _ = self.student(x, None)
+        if "drop_weights" not in self.params["data"]:
+            x, y = batch
+        else:
+            x, y, _ = batch
 
-        with torch.no_grad():
-            teacher_z, _, _ = self.teacher(x, None)
+        if self.params["student"]["y_condition"]:
+            student_z, student_nll, _ = self.student(x, y)
+        else:
+            student_z, student_nll, _ = self.student(x, None)
+
+        if self.params["loss"]["kd"]["weight"] > 0:
+            with torch.no_grad():
+                if self.params["student"]["y_condition"]:
+                    teacher_z, _, _ = self.teacher(x, y)
+                else:
+                    teacher_z, _, _ = self.teacher(x, None)
+        else:
+            teacher_z = None
 
         return {
             "student_nll": student_nll,
@@ -122,6 +142,23 @@ class NFModel(pl.LightningModule):
             "kd": kd_loss_value,
         }
 
+    def generate(self, batch):
+        """Generate x from noise conditioning on batch"""
+
+        if "drop_weights" not in self.params["data"]:
+            _, condition = batch
+        else:
+            _, condition, _ = batch
+
+        if self.params["student"]["y_condition"]:
+            generated = self.student(reverse=True, y_onehot=condition, temperature=1)[
+                -1
+            ]
+        else:
+            generated = self.student(reverse=True, temperature=1)[-1]
+
+        return generated
+
     def configure_optimizers(self):
         if self.params["optimizer"] == "adam":
             optimizer = torch.optim.Adam(
@@ -132,6 +169,7 @@ class NFModel(pl.LightningModule):
         return optimizer
 
     def training_step(self, batch, batch_idx):
+        # TODO: take weights for RICH dataset into account
         model_outputs = self.forward(batch)
         train_losses = self.loss(model_outputs)
 
@@ -153,6 +191,7 @@ class NFModel(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         model_outputs = self.forward(batch)
         train_losses = self.loss(model_outputs)
+        generated = self.generate(batch)
 
         result_loss = (
             self.nll_weight * train_losses["nll"] + self.kd_weight * train_losses["kd"]
@@ -162,6 +201,8 @@ class NFModel(pl.LightningModule):
             "nll": train_losses["nll"],
             "kd": train_losses["kd"],
             "loss": result_loss,
+            "generated": generated,
+            "real": batch[0],
         }
 
     def epoch_end(self, step_outputs, fid_mode):
@@ -169,31 +210,41 @@ class NFModel(pl.LightningModule):
         epoch_nll = torch.stack([output["nll"] for output in step_outputs]).mean()
         epoch_kd = torch.stack([output["kd"] for output in step_outputs]).mean()
 
-        epoch_fid = self.calc_fid(fid_mode)
-
-        return {
+        metrics = {
             "epoch_loss": epoch_loss,
             "epoch_nll": epoch_nll,
             "epoch_kd": epoch_kd,
-            "epoch_fid": epoch_fid,
         }
+
+        if not self.params["student"].get("is_1d", False):
+            epoch_fid = self.calc_fid(fid_mode)
+            metrics["epoch_fid"] = epoch_fid
+
+        return metrics
 
     def training_epoch_end(self, outputs):
         metrics = self.epoch_end(outputs, fid_mode="train")
         self.log("train_epoch_loss", metrics["epoch_loss"])
         self.log("train_epoch_nll", metrics["epoch_nll"])
         self.log("train_epoch_kd", metrics["epoch_kd"])
-        self.log("train_epoch_fid", metrics["epoch_fid"])
+
+        if not self.params["student"].get("is_1d", False):
+            self.log("train_epoch_fid", metrics["epoch_fid"])
 
     def validation_epoch_end(self, outputs):
         metrics = self.epoch_end(outputs, fid_mode="val")
         self.log("val_epoch_loss", metrics["epoch_loss"])
         self.log("val_epoch_nll", metrics["epoch_nll"])
         self.log("val_epoch_kd", metrics["epoch_kd"])
-        self.log("val_epoch_fid", metrics["epoch_fid"])
 
-        self.sample_images()
-        self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
+        if not self.params["student"].get("is_1d", False):
+            self.log("val_epoch_fid", metrics["epoch_fid"])
+
+            self.sample_images()
+            self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
+        else:
+            self.get_histograms(outputs["generated"], outputs["real"])
+            self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
 
     def calc_fid(self, fid_mode) -> float:
         if fid_mode == "train":
@@ -239,6 +290,9 @@ class NFModel(pl.LightningModule):
         plt.imshow(grid)
         plt.axis("off")
 
+    def get_histograms(self, generated, real):
+        pass
+
     ####################
     # DATA RELATED HOOKS
     ####################
@@ -252,6 +306,14 @@ class NFModel(pl.LightningModule):
                 data_description["data_path"],
                 data_description["download"],
             )
+        elif data_description["name"].lower() == "rich":
+            image_shape, num_classes, train_dataset, valid_dataset, scaler = get_RICH(
+                data_description["particle"],
+                data_description["drop_weights"],
+                data_description["data_path"],
+                data_description["download"],
+            )
+            self.scaler = scaler
 
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset

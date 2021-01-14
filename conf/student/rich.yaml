@@ -1,0 +1,14 @@
+student:
+  is_1d: true
+  image_shape:
+    - 5
+  hidden_channels: 256
+  K: 8
+  L: 3
+  actnorm_scale: 1.0
+  flow_permutation: invconv
+  flow_coupling: affine
+  LU_decomposed: true
+  y_classes: 3
+  learn_top: false
+  y_condition: true

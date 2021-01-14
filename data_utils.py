@@ -1,9 +1,13 @@
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 
+from torch.utils.data import TensorDataset
 from torchvision import transforms, datasets
+
+from rich_utils import get_merged_typed_dataset
 
 n_bits = 8
 
@@ -101,3 +105,44 @@ def get_SVHN(augment, dataroot, download):
     )
 
     return image_shape, num_classes, train_dataset, test_dataset
+
+
+def get_RICH(particle, drop_weights, dataroot, download):
+    flow_shape = (5,)
+
+    # TODO: rewrite rich utils to make it use given path
+    path = Path(dataroot) / "data" / "data_calibsample"
+    # TODO: download dataset if needed
+
+    train_data, test_data, scaler = get_merged_typed_dataset(
+        particle, dtype=np.float32, log=True
+    )
+
+    condition_columns = ["Brunel_P", "Brunel_ETA", "nTracks_Brunel"]
+    flow_columns = ["RichDLLe", "RichDLLk", "RichDLLmu", "RichDLLp", "RichDLLbt"]
+    weight_column = "probe_sWeight"
+
+    if drop_weights:
+        train_dataset = TensorDataset(
+            torch.from_numpy(train_data[flow_columns].values),
+            torch.from_numpy(train_data[condition_columns].values),
+            torch.from_numpy(train_data[weight_column].values),
+        )
+        test_dataset = TensorDataset(
+            torch.from_numpy(test_data[flow_columns].values),
+            torch.from_numpy(test_data[condition_columns].values),
+            torch.from_numpy(test_data[weight_column].values),
+        )
+    else:
+        train_dataset = TensorDataset(
+            torch.from_numpy(train_data[flow_columns].values),
+            torch.from_numpy(train_data[condition_columns].values),
+            torch.from_numpy(train_data[weight_column].values),
+        )
+        test_dataset = TensorDataset(
+            torch.from_numpy(test_data[flow_columns].values),
+            torch.from_numpy(test_data[condition_columns].values),
+            torch.from_numpy(test_data[weight_column].values),
+        )
+
+    return flow_shape, len(condition_columns), train_dataset, test_dataset, scaler

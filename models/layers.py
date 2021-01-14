@@ -18,7 +18,8 @@ def gaussian_p(mean, logs, x):
 
 def gaussian_likelihood(mean, logs, x):
     p = gaussian_p(mean, logs, x)
-    return torch.sum(p, dim=[1, 2, 3])
+    dimensions = list(range(len(x.shape)))
+    return torch.sum(p, dim=dimensions[1:])
 
 
 def gaussian_sample(mean, logs, temperature=1):
@@ -68,10 +69,11 @@ class _ActNorm(nn.Module):
     After initialization, `bias` and `logs` will be trained as parameters.
     """
 
-    def __init__(self, num_features, scale=1.0):
+    def __init__(self, num_features, scale=1.0, is_1d=False):
         super().__init__()
+        self.is_1d = is_1d
         # register mean and scale
-        size = [1, num_features, 1, 1]
+        size = [1, num_features] + [] if self.is_1d else [1, 1]
         self.bias = nn.Parameter(torch.zeros(*size))
         self.logs = nn.Parameter(torch.zeros(*size))
         self.num_features = num_features
@@ -82,9 +84,13 @@ class _ActNorm(nn.Module):
         if not self.training:
             raise ValueError("In Eval mode, but ActNorm not inited")
 
+        reduction_dim = [0] + [] if self.is_1d else [2, 3]
+
         with torch.no_grad():
-            bias = -torch.mean(input.clone(), dim=[0, 2, 3], keepdim=True)
-            vars = torch.mean((input.clone() + bias) ** 2, dim=[0, 2, 3], keepdim=True)
+            bias = -torch.mean(input.clone(), dim=reduction_dim, keepdim=True)
+            vars = torch.mean(
+                (input.clone() + bias) ** 2, dim=reduction_dim, keepdim=True
+            )
             logs = torch.log(self.scale / (torch.sqrt(vars) + 1e-6))
 
             self.bias.data.copy_(bias.data)
@@ -106,13 +112,12 @@ class _ActNorm(nn.Module):
             input = input * torch.exp(self.logs)
 
         if logdet is not None:
-            """
-            logs is log_std of `mean of channels`
-            so we need to multiply by number of pixels
-            """
-            b, c, h, w = input.shape
+            dlogdet = torch.sum(self.logs)
 
-            dlogdet = torch.sum(self.logs) * h * w
+            if not self.is_1d:
+                # logs is log_std of `mean of channels` so we need to multiply by number of pixels
+                b, c, h, w = input.shape
+                dlogdet *= h * w
 
             if reverse:
                 dlogdet *= -1
@@ -139,12 +144,26 @@ class _ActNorm(nn.Module):
 
 class ActNorm2d(_ActNorm):
     def __init__(self, num_features, scale=1.0):
-        super().__init__(num_features, scale)
+        super().__init__(num_features, scale, is_1d=False)
 
     def _check_input_dim(self, input):
         assert len(input.size()) == 4
         assert input.size(1) == self.num_features, (
-            "[ActNorm]: input should be in shape as `BCHW`,"
+            "[ActNorm]: input should be in shape as `B x C x H x W`,"
+            " channels should be {} rather than {}".format(
+                self.num_features, input.size()
+            )
+        )
+
+
+class ActNorm1d(_ActNorm):
+    def __init__(self, num_features, scale=1.0):
+        super().__init__(num_features, scale, is_1d=True)
+
+    def _check_input_dim(self, input):
+        assert len(input.size()) == 2
+        assert input.size(1) == self.num_features, (
+            "[ActNorm]: input should be in shape as `B x C`,"
             " channels should be {} rather than {}".format(
                 self.num_features, input.size()
             )
@@ -310,8 +329,10 @@ class SqueezeLayer(nn.Module):
 
 
 class InvertibleConv1x1(nn.Module):
-    def __init__(self, num_channels, LU_decomposed):
+    def __init__(self, num_channels, LU_decomposed, is_1d=False):
         super().__init__()
+        self.is_1d = is_1d
+
         w_shape = [num_channels, num_channels]
         w_init = torch.qr(torch.randn(*w_shape))[0]
 
@@ -338,10 +359,17 @@ class InvertibleConv1x1(nn.Module):
         self.LU_decomposed = LU_decomposed
 
     def get_weight(self, input, reverse):
-        b, c, h, w = input.shape
+        if self.is_1d:
+            b, c = input.shape
+        else:
+            b, c, h, w = input.shape
 
         if not self.LU_decomposed:
-            dlogdet = torch.slogdet(self.weight)[1] * h * w
+            dlogdet = torch.slogdet(self.weight)[1]
+
+            if not self.is_1d:
+                dlogdet *= h * w
+
             if reverse:
                 weight = torch.inverse(self.weight)
             else:
@@ -355,7 +383,10 @@ class InvertibleConv1x1(nn.Module):
             u = self.upper * self.l_mask.transpose(0, 1).contiguous()
             u += torch.diag(self.sign_s * torch.exp(self.log_s))
 
-            dlogdet = torch.sum(self.log_s) * h * w
+            dlogdet = torch.sum(self.log_s)
+
+            if not self.is_1d:
+                dlogdet *= h * w
 
             if reverse:
                 u_inv = torch.inverse(u)
@@ -366,7 +397,10 @@ class InvertibleConv1x1(nn.Module):
             else:
                 weight = torch.matmul(self.p, torch.matmul(lower, u))
 
-        return weight.view(self.w_shape[0], self.w_shape[1], 1, 1), dlogdet
+        if not self.is_1d:
+            weight = weight.view(self.w_shape[0], self.w_shape[1], 1, 1)
+
+        return weight, dlogdet
 
     def forward(self, input, logdet=None, reverse=False):
         """
@@ -374,13 +408,15 @@ class InvertibleConv1x1(nn.Module):
         """
         weight, dlogdet = self.get_weight(input, reverse)
 
-        if not reverse:
-            z = F.conv2d(input, weight)
-            if logdet is not None:
-                logdet = logdet + dlogdet
-            return z, logdet
+        if self.is_1d:
+            z = input @ weight
         else:
             z = F.conv2d(input, weight)
-            if logdet is not None:
+
+        if logdet is not None:
+            if not reverse:
+                logdet = logdet + dlogdet
+            else:
                 logdet = logdet - dlogdet
-            return z, logdet
+
+        return z, logdet
