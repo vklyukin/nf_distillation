@@ -1,5 +1,5 @@
 defaults:
-  - dataset: cifar
-  - training: glow
-  - teacher: glow
-  - student: glow
+  - dataset: rich
+  - training: rich
+  - teacher: rich
+  - student: rich

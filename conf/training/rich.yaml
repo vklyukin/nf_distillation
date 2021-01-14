@@ -1,0 +1,30 @@
+architecture: glow
+
+learning_rate: 0.0005
+optimizer: adam
+n_epochs: 1000
+batch_size: 64
+
+inherit_p: false
+
+loss:
+  nll:
+    weight: 1
+  kd:
+    name: mse
+    weight: 0
+
+seed: 42
+
+gpus: 0
+num_workers: 1
+fid_samples: -1
+
+to_test: false
+track_grad_norm: false
+
+neptune:
+  project_name: vklyukin/norm-flows
+  experiment_name: tabular
+  tags:
+    - rich

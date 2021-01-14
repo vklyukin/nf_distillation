@@ -5,6 +5,7 @@ import torch.nn as nn
 from .layers import (
     Conv2d,
     Conv2dZeros,
+    ActNorm1d,
     ActNorm2d,
     InvertibleConv1x1,
     Permute2d,
@@ -17,13 +18,30 @@ from .layers import (
 from .utils import split_feature, uniform_binning_correction
 
 
-def get_block(in_channels, out_channels, hidden_channels):
+def get_block_2d(in_channels, out_channels, hidden_channels):
     block = nn.Sequential(
         Conv2d(in_channels, hidden_channels),
         nn.ReLU(inplace=False),
         Conv2d(hidden_channels, hidden_channels, kernel_size=(1, 1)),
         nn.ReLU(inplace=False),
         Conv2dZeros(hidden_channels, out_channels),
+    )
+    return block
+
+
+def get_block_1d(in_features, out_features, hidden_features):
+    block = nn.Sequential(
+        nn.Linear(in_features, hidden_features),
+        nn.ReLU(inplace=False),
+        nn.Linear(hidden_features, hidden_features),
+        nn.ReLU(inplace=False),
+        nn.Linear(hidden_features, hidden_features),
+        nn.ReLU(inplace=False),
+        nn.Linear(hidden_features, hidden_features),
+        nn.ReLU(inplace=False),
+        nn.Linear(hidden_features, hidden_features),
+        nn.Tanh(),
+        nn.Linear(hidden_features, out_features),
     )
     return block
 
@@ -37,23 +55,37 @@ class FlowStep(nn.Module):
         flow_permutation,
         flow_coupling,
         LU_decomposed,
+        is_1d=False,
     ):
         super().__init__()
+        self.is_1d = is_1d
         self.flow_coupling = flow_coupling
 
-        self.actnorm = ActNorm2d(in_channels, actnorm_scale)
+        if self.is_1d:
+            self.actnorm = ActNorm1d(in_channels, actnorm_scale)
+        else:
+            self.actnorm = ActNorm2d(in_channels, actnorm_scale)
 
         # 2. permute
         if flow_permutation == "invconv":
-            self.invconv = InvertibleConv1x1(in_channels, LU_decomposed=LU_decomposed)
+            self.invconv = InvertibleConv1x1(
+                in_channels, LU_decomposed=LU_decomposed, is_1d=is_1d
+            )
             self.flow_permutation = lambda z, logdet, rev: self.invconv(z, logdet, rev)
         elif flow_permutation == "shuffle":
+
+            if self.is_1d:
+                raise RuntimeError("Permutation is not supported is 1d mode")
+
             self.shuffle = Permute2d(in_channels, shuffle=True)
             self.flow_permutation = lambda z, logdet, rev: (
                 self.shuffle(z, rev),
                 logdet,
             )
         else:
+            if self.is_1d:
+                raise RuntimeError("Permutation is not supported is 1d mode")
+
             self.reverse = Permute2d(in_channels, shuffle=False)
             self.flow_permutation = lambda z, logdet, rev: (
                 self.reverse(z, rev),
@@ -62,9 +94,27 @@ class FlowStep(nn.Module):
 
         # 3. coupling
         if flow_coupling == "additive":
-            self.block = get_block(in_channels // 2, in_channels // 2, hidden_channels)
+            if self.is_1d:
+                self.block = get_block_1d(
+                    in_channels // 2, in_channels - in_channels // 2, hidden_channels
+                )
+            else:
+                self.block = get_block_2d(
+                    in_channels // 2, in_channels - in_channels // 2, hidden_channels
+                )
         elif flow_coupling == "affine":
-            self.block = get_block(in_channels // 2, in_channels, hidden_channels)
+            if self.is_1d:
+                self.block = get_block_1d(
+                    in_channels // 2,
+                    (in_channels - in_channels // 2) * 2,
+                    hidden_channels,
+                )
+            else:
+                self.block = get_block_2d(
+                    in_channels // 2,
+                    (in_channels - in_channels // 2) * 2,
+                    hidden_channels,
+                )
 
     def forward(self, input, logdet=None, reverse=False):
         if not reverse:
@@ -73,8 +123,6 @@ class FlowStep(nn.Module):
             return self.reverse_flow(input, logdet)
 
     def normal_flow(self, input, logdet):
-        assert input.size(1) % 2 == 0
-
         # 1. actnorm
         z, logdet = self.actnorm(input, logdet=logdet, reverse=False)
 
@@ -91,7 +139,10 @@ class FlowStep(nn.Module):
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 + shift
             z2 = z2 * scale
-            logdet = torch.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
+            logdet = (
+                torch.sum(torch.log(scale), dim=[1] + [] if self.is_1d else [2, 3])
+                + logdet
+            )
         z = torch.cat((z1, z2), dim=1)
 
         return z, logdet
@@ -109,7 +160,10 @@ class FlowStep(nn.Module):
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 / scale
             z2 = z2 - shift
-            logdet = -torch.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
+            logdet = (
+                -torch.sum(torch.log(scale), dim=[1] + [] if self.is_1d else [2, 3])
+                + logdet
+            )
         z = torch.cat((z1, z2), dim=1)
 
         # 2. permute
@@ -132,8 +186,11 @@ class FlowNet(nn.Module):
         flow_permutation,
         flow_coupling,
         LU_decomposed,
+        is_1d=False,
     ):
         super().__init__()
+
+        self.is_1d = is_1d
 
         self.layers = nn.ModuleList()
         self.output_shapes = []
@@ -141,13 +198,18 @@ class FlowNet(nn.Module):
         self.K = K
         self.L = L
 
-        H, W, C = image_shape
+        if not self.is_1d:
+            H, W, C = image_shape
+        else:
+            C = image_shape[0]
 
         for i in range(L):
             # 1. Squeeze
-            C, H, W = C * 4, H // 2, W // 2
-            self.layers.append(SqueezeLayer(factor=2))
-            self.output_shapes.append([-1, C, H, W])
+            if not self.is_1d:
+                C, H, W = C * 4, H // 2, W // 2
+
+                self.layers.append(SqueezeLayer(factor=2))
+                self.output_shapes.append([-1, C, H, W])
 
             # 2. K FlowStep
             for _ in range(K):
@@ -159,12 +221,17 @@ class FlowNet(nn.Module):
                         flow_permutation=flow_permutation,
                         flow_coupling=flow_coupling,
                         LU_decomposed=LU_decomposed,
+                        is_1d=self.is_1d,
                     )
                 )
-                self.output_shapes.append([-1, C, H, W])
+
+                if self.is_1d:
+                    self.output_shapes.append([-1, C])
+                else:
+                    self.output_shapes.append([-1, C, H, W])
 
             # 3. Split2d
-            if i < L - 1:
+            if i < L - 1 and not self.is_1d:
                 self.layers.append(Split2d(num_channels=C))
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
@@ -203,6 +270,7 @@ class Glow(nn.Module):
         y_classes,
         learn_top,
         y_condition,
+        is_1d=False,
     ):
         super().__init__()
         self.flow = FlowNet(
@@ -214,7 +282,10 @@ class Glow(nn.Module):
             flow_permutation=flow_permutation,
             flow_coupling=flow_coupling,
             LU_decomposed=LU_decomposed,
+            is_1d=is_1d,
         )
+        self.is_1d = is_1d
+
         self.y_classes = y_classes
         self.y_condition = y_condition
 
@@ -223,7 +294,11 @@ class Glow(nn.Module):
         # learned prior
         if learn_top:
             C = self.flow.output_shapes[-1][1]
-            self.learn_top_fn = Conv2dZeros(C * 2, C * 2)
+
+            if self.is_1d:
+                self.learn_top_fn = LinearZeros(C * 2, C * 2)
+            else:
+                self.learn_top_fn = Conv2dZeros(C * 2, C * 2)
 
         if y_condition:
             C = self.flow.output_shapes[-1][1]
@@ -236,18 +311,21 @@ class Glow(nn.Module):
                 [
                     1,
                     self.flow.output_shapes[-1][1] * 2,
-                    self.flow.output_shapes[-1][2],
-                    self.flow.output_shapes[-1][3],
                 ]
+                + []
+                if self.is_1d
+                else [self.flow.output_shapes[-1][2], self.flow.output_shapes[-1][3]]
             ),
         )
 
     def prior(self, data, y_onehot=None):
         if data is not None:
-            h = self.prior_h.repeat(data.shape[0], 1, 1, 1)
+            shape = [data.shape[0], 1] + [] if self.is_1d else [1, 1]
+            h = self.prior_h.repeat(*shape)
         else:
             # Hardcoded a batch size of 32 here
-            h = self.prior_h.repeat(32, 1, 1, 1)
+            shape = [32, 1] + [] if self.is_1d else [1, 1]
+            h = self.prior_h.repeat(shape)
 
         channels = h.size(1)
 
@@ -257,7 +335,8 @@ class Glow(nn.Module):
         if self.y_condition:
             assert y_onehot is not None
             yp = self.project_ycond(y_onehot)
-            h += yp.view(h.shape[0], channels, 1, 1)
+            shape = [h.shape[0], channels] + [] if self.is_1d else [1, 1]
+            h += yp.view(*shape)
 
         return split_feature(h, "split")
 
@@ -268,9 +347,15 @@ class Glow(nn.Module):
             return self.normal_flow(x, y_onehot)
 
     def normal_flow(self, x, y_onehot):
-        b, c, h, w = x.shape
+        if self.is_1d:
+            b, c = x.shape
+        else:
+            b, c, h, w = x.shape
 
-        x, logdet = uniform_binning_correction(x)
+        if self.is_1d:
+            logdet = torch.zeros(b, device=x.device, dtype=torch.float32)
+        else:
+            x, logdet = uniform_binning_correction(x)
 
         z, objective = self.flow(x, logdet=logdet, reverse=False)
 
@@ -283,7 +368,10 @@ class Glow(nn.Module):
             y_logits = None
 
         # Full objective - converted to bits per dimension
-        bpd = (-objective) / (math.log(2.0) * c * h * w)
+        if self.is_1d:
+            bpd = (-objective) / (math.log(2.0) * c)
+        else:
+            bpd = (-objective) / (math.log(2.0) * c * h * w)
 
         return z, bpd, y_logits
 
@@ -296,6 +384,6 @@ class Glow(nn.Module):
         return x
 
     def set_actnorm_init(self):
-        for name, m in self.named_modules():
-            if isinstance(m, ActNorm2d):
-                m.inited = True
+        for name, module in self.named_modules():
+            if isinstance(module, ActNorm2d) or isinstance(module, ActNorm1d):
+                module.inited = True
