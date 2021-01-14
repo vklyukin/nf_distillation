@@ -3,7 +3,7 @@ architecture: glow
 learning_rate: 0.0005
 optimizer: adam
 n_epochs: 1000
-batch_size: 64
+batch_size: 8192
 
 inherit_p: false
 
@@ -17,7 +17,7 @@ loss:
 seed: 42
 
 gpus: 0
-num_workers: 1
+num_workers: 10
 fid_samples: -1
 
 to_test: false

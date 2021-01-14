@@ -14,27 +14,27 @@ from pl_module import NFModel
 @hydra.main(config_path="conf", config_name="config")
 def main(config: DictConfig):
 
-    # neptune_logger = NeptuneLogger(
-    #     project_name=config["neptune"]["project_name"],
-    #     experiment_name=config["neptune"]["experiment_name"],
-    #     tags=config["neptune"]["tags"],
-    #     params=config,
-    # )
+    neptune_logger = NeptuneLogger(
+        project_name=config["neptune"]["project_name"],
+        experiment_name=config["neptune"]["experiment_name"],
+        tags=OmegaConf.to_container(config["neptune"]["tags"]),
+        params=OmegaConf.to_container(config),
+    )
 
-    # model_checkpoint = ModelCheckpoint(
-    #     save_weights_only=True,
-    #     save_top_k=3,
-    #     monitor="val_epoch_fid",
-    #     mode="min",
-    #     period=1,
-    # )
+    model_checkpoint = ModelCheckpoint(
+        save_weights_only=True,
+        save_top_k=3,
+        monitor="val_epoch_loss" if config["student"].get("is_1d", False) else "val_epoch_fid",
+        mode="min",
+        period=1,
+    )
 
     pl.seed_everything(config["seed"])
 
     trainer = pl.Trainer(
         max_epochs=config["n_epochs"],
-        # checkpoint_callback=model_checkpoint,
-        # logger=neptune_logger,
+        checkpoint_callback=model_checkpoint,
+        logger=neptune_logger,
         gpus=config["gpus"],
         weights_summary="full",
         track_grad_norm=2 if config["track_grad_norm"] else -1,

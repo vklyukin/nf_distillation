@@ -5,7 +5,7 @@ import pandas as pd
 import os
 from time import time
 
-data_dir = "./data/data/data_calibsample/"
+data_dir = "/data/vnkljukin/nf/data_calibsample/"
 
 
 def get_particle_dset(particle):

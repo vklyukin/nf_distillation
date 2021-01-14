@@ -148,8 +148,6 @@ class FlowStep(nn.Module):
         return z, logdet
 
     def reverse_flow(self, input, logdet):
-        assert input.size(1) % 2 == 0
-
         # 1.coupling
         z1, z2 = split_feature(input, "split")
         if self.flow_coupling == "additive":
@@ -324,7 +322,11 @@ class Glow(nn.Module):
             h = self.prior_h.repeat(*shape)
         else:
             # Hardcoded a batch size of 32 here
-            shape = [32, 1] + [] if self.is_1d else [1, 1]
+            if y_onehot is not None:
+                batch_size = y_onehot.size(0)
+            else:
+                batch_size = 32
+            shape = [batch_size, 1] + [] if self.is_1d else [1, 1]
             h = self.prior_h.repeat(shape)
 
         channels = h.size(1)
@@ -337,7 +339,7 @@ class Glow(nn.Module):
             yp = self.project_ycond(y_onehot)
             shape = [h.shape[0], channels] + [] if self.is_1d else [1, 1]
             h += yp.view(*shape)
-
+        
         return split_feature(h, "split")
 
     def forward(self, x=None, y_onehot=None, z=None, temperature=None, reverse=False):

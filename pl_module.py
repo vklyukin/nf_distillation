@@ -243,7 +243,10 @@ class NFModel(pl.LightningModule):
             self.sample_images()
             self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
         else:
-            self.get_histograms(outputs["generated"], outputs["real"])
+            self.get_histograms(
+                torch.stack([output["generated"] for output in outputs]), 
+                torch.stack([output["real"] for output in outputs])
+            )
             self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
 
     def calc_fid(self, fid_mode) -> float:
@@ -293,9 +296,6 @@ class NFModel(pl.LightningModule):
     def get_histograms(self, generated, real):
         plt.figure(figsize=(10, 16))
         plt.suptitle("Histograms comparison")
-
-        generated = generated.detach().cpu().numpy()
-        real = real.detach().cpu().numpy()
 
         features_names = ["RichDLLe", "RichDLLk", "RichDLLmu", "RichDLLp", "RichDLLbt"]
         num_of_subplots = len(features_names)
