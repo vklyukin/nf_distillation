@@ -5,7 +5,7 @@ optimizer: adam
 n_epochs: 1000
 batch_size: 128
 
-inherit_p: true
+inherit_p: false
 
 loss:
   nll:
