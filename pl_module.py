@@ -5,6 +5,7 @@ import numpy as np
 import os
 import pandas as pd
 import pytorch_lightning as pl
+import seaborn as sns
 import torch
 import torch.nn as nn
 import typing as tp
@@ -66,6 +67,8 @@ class NFModel(pl.LightningModule):
                 self.student_kd_indices,
                 self.teacher_kd_indices,
             )
+
+        sns.set()
 
     def create_model(self, model_name, teacher=None) -> nn.Module:
         """Create model from config"""
@@ -244,8 +247,8 @@ class NFModel(pl.LightningModule):
             self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
         else:
             self.get_histograms(
-                torch.stack([output["generated"] for output in outputs]), 
-                torch.stack([output["real"] for output in outputs])
+                torch.cat([output["generated"] for output in outputs]),
+                torch.cat([output["real"] for output in outputs]),
             )
             self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
 
@@ -294,25 +297,38 @@ class NFModel(pl.LightningModule):
         plt.axis("off")
 
     def get_histograms(self, generated, real):
-        plt.figure(figsize=(10, 16))
-        plt.suptitle("Histograms comparison")
-
         features_names = ["RichDLLe", "RichDLLk", "RichDLLmu", "RichDLLp", "RichDLLbt"]
         num_of_subplots = len(features_names)
 
-        for feature_index, feature_name in enumerate(features_names):
-            plt.subplot(num_of_subplots, 1, feature_index + 1)
+        fig, axes = plt.subplots(num_of_subplots, 1, figsize=(10, 16))
+        plt.suptitle("Histograms comparison")
 
-            plt.title(feature_name)
-            plt.ylabel("density")
+        for feature_index, (feature_name, ax) in enumerate(
+            zip(features_names, axes.flatten())
+        ):
+            ax.set_title(feature_name)
 
-            plt.hist(generated[:, feature_index], bins=100, label="gen", alpha=0.5)
-            plt.hist(real[:, feature_index], bins=100, label="real", alpha=0.5)
+            sns.distplot(
+                generated[:, feature_index].detach().cpu().numpy(),
+                bins=100,
+                label="gen",
+                hist_kws={"alpha": 0.5},
+                ax=ax,
+                norm_hist=True,
+                kde=False,
+            )
+            sns.distplot(
+                real[:, feature_index].detach().cpu().numpy(),
+                bins=100,
+                label="real",
+                hist_kws={"alpha": 1.0},
+                ax=ax,
+                norm_hist=True,
+                kde=False,
+            )
 
             if feature_index == 0:
-                plt.legend()
-
-        plt.xlabel("bin")
+                ax.legend()
 
     ####################
     # DATA RELATED HOOKS
