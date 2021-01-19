@@ -68,6 +68,8 @@ class NFModel(pl.LightningModule):
                 self.teacher_kd_indices,
             )
 
+        sns.set()
+
     def create_model(self, model_name, teacher=None) -> nn.Module:
         """Create model from config"""
         if self.params["architecture"].lower() == "glow":
@@ -304,8 +306,7 @@ class NFModel(pl.LightningModule):
         for feature_index, (feature_name, ax) in enumerate(
             zip(features_names, axes.flatten())
         ):
-            ax.title(feature_name)
-            ax.ylabel("density")
+            ax.set_title(feature_name)
 
             sns.distplot(
                 generated[:, feature_index].detach().cpu().numpy(),
@@ -328,8 +329,6 @@ class NFModel(pl.LightningModule):
 
             if feature_index == 0:
                 ax.legend()
-
-        plt.xlabel("bin")
 
     ####################
     # DATA RELATED HOOKS
