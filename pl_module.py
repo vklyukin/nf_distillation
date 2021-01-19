@@ -244,8 +244,8 @@ class NFModel(pl.LightningModule):
             self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
         else:
             self.get_histograms(
-                torch.stack([output["generated"] for output in outputs]), 
-                torch.stack([output["real"] for output in outputs])
+                torch.cat([output["generated"] for output in outputs]), 
+                torch.cat([output["real"] for output in outputs])
             )
             self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
 
@@ -306,8 +306,8 @@ class NFModel(pl.LightningModule):
             plt.title(feature_name)
             plt.ylabel("density")
 
-            plt.hist(generated[:, feature_index], bins=100, label="gen", alpha=0.5)
-            plt.hist(real[:, feature_index], bins=100, label="real", alpha=0.5)
+            plt.hist(generated[:, feature_index].detach().cpu().numpy(), bins=100, label="gen", alpha=0.5, density=True)
+            plt.hist(real[:, feature_index].detach().cpu().numpy(), bins=100, label="real", alpha=0.5, density=True)
 
             if feature_index == 0:
                 plt.legend()
