@@ -24,7 +24,9 @@ def main(config: DictConfig):
     model_checkpoint = ModelCheckpoint(
         save_weights_only=True,
         save_top_k=3,
-        monitor="val_epoch_loss" if config["student"].get("is_1d", False) else "val_epoch_fid",
+        monitor="val_epoch_loss"
+        if config["student"].get("is_1d", False)
+        else "val_epoch_fid",
         mode="min",
         period=1,
     )
