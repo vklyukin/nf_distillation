@@ -309,19 +309,20 @@ class NFModel(pl.LightningModule):
             ax.set_title(feature_name)
 
             sns.distplot(
-                generated[:, feature_index].detach().cpu().numpy(),
-                bins=100,
-                label="gen",
-                hist_kws={"alpha": 0.5},
-                ax=ax,
-                norm_hist=True,
-                kde=False,
-            )
-            sns.distplot(
                 real[:, feature_index].detach().cpu().numpy(),
                 bins=100,
                 label="real",
                 hist_kws={"alpha": 1.0},
+                ax=ax,
+                norm_hist=True,
+                kde=False,
+            )
+
+            sns.distplot(
+                generated[:, feature_index].detach().cpu().numpy(),
+                bins=100,
+                label="gen",
+                hist_kws={"alpha": 0.5},
                 ax=ax,
                 norm_hist=True,
                 kde=False,
