@@ -56,6 +56,7 @@ class FlowStep(nn.Module):
         flow_coupling,
         LU_decomposed,
         is_1d=False,
+        condition_features=0,
     ):
         super().__init__()
         self.is_1d = is_1d
@@ -94,35 +95,39 @@ class FlowStep(nn.Module):
 
         # 3. coupling
         if flow_coupling == "additive":
+            in_block_channels = in_channels // 2 + condition_features
+            out_block_channels = in_channels - in_channels // 2
             if self.is_1d:
                 self.block = get_block_1d(
-                    in_channels // 2, in_channels - in_channels // 2, hidden_channels
+                    in_block_channels, out_block_channels, hidden_channels
                 )
             else:
                 self.block = get_block_2d(
-                    in_channels // 2, in_channels - in_channels // 2, hidden_channels
+                    in_block_channels, out_block_channels, hidden_channels
                 )
         elif flow_coupling == "affine":
+            in_block_channels = in_channels // 2 + condition_features
+            out_block_channels = (in_channels - in_channels // 2) * 2
             if self.is_1d:
                 self.block = get_block_1d(
-                    in_channels // 2,
-                    (in_channels - in_channels // 2) * 2,
+                    in_block_channels,
+                    out_block_channels,
                     hidden_channels,
                 )
             else:
                 self.block = get_block_2d(
-                    in_channels // 2,
-                    (in_channels - in_channels // 2) * 2,
+                    in_block_channels,
+                    out_block_channels,
                     hidden_channels,
                 )
 
-    def forward(self, input, logdet=None, reverse=False):
+    def forward(self, input, y_onehot=None, logdet=None, reverse=False):
         if not reverse:
-            return self.normal_flow(input, logdet)
+            return self.normal_flow(input, y_onehot=y_onehot, logdet=logdet)
         else:
-            return self.reverse_flow(input, logdet)
+            return self.reverse_flow(input, y_onehot=y_onehot, logdet=logdet)
 
-    def normal_flow(self, input, logdet):
+    def normal_flow(self, input, y_onehot, logdet):
         # 1. actnorm
         z, logdet = self.actnorm(input, logdet=logdet, reverse=False)
 
@@ -131,10 +136,16 @@ class FlowStep(nn.Module):
 
         # 3. coupling
         z1, z2 = split_feature(z, "split")
+
+        if y_onehot is not None:
+            coupling_argument = torch.cat((z1, y_onehot), dim=1)
+        else:
+            coupling_argument = z1
+
         if self.flow_coupling == "additive":
-            z2 = z2 + self.block(z1)
+            z2 = z2 + self.block(coupling_argument)
         elif self.flow_coupling == "affine":
-            h = self.block(z1)
+            h = self.block(coupling_argument)
             shift, scale = split_feature(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 + shift
@@ -147,13 +158,19 @@ class FlowStep(nn.Module):
 
         return z, logdet
 
-    def reverse_flow(self, input, logdet):
+    def reverse_flow(self, input, y_onehot, logdet):
         # 1.coupling
         z1, z2 = split_feature(input, "split")
+
+        if y_onehot is not None:
+            coupling_argument = torch.cat((z1, y_onehot), dim=1)
+        else:
+            coupling_argument = z1
+
         if self.flow_coupling == "additive":
-            z2 = z2 - self.block(z1)
+            z2 = z2 - self.block(coupling_argument)
         elif self.flow_coupling == "affine":
-            h = self.block(z1)
+            h = self.block(coupling_argument)
             shift, scale = split_feature(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             z2 = z2 / scale
@@ -185,6 +202,7 @@ class FlowNet(nn.Module):
         flow_coupling,
         LU_decomposed,
         is_1d=False,
+        condition_features=0,
     ):
         super().__init__()
 
@@ -220,6 +238,7 @@ class FlowNet(nn.Module):
                         flow_coupling=flow_coupling,
                         LU_decomposed=LU_decomposed,
                         is_1d=self.is_1d,
+                        condition_features=condition_features,
                     )
                 )
 
@@ -234,23 +253,30 @@ class FlowNet(nn.Module):
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
 
-    def forward(self, input, logdet=0.0, reverse=False, temperature=None):
+    def forward(
+        self, input, y_onehot=None, logdet=0.0, reverse=False, temperature=None
+    ):
         if reverse:
-            return self.decode(input, temperature)
+            return self.decode(input, y_onehot=y_onehot, temperature=temperature)
         else:
-            return self.encode(input, logdet)
+            return self.encode(input, y_onehot=y_onehot, logdet=logdet)
 
-    def encode(self, z, logdet=0.0):
+    def encode(self, z, y_onehot=None, logdet=0.0):
         for layer, shape in zip(self.layers, self.output_shapes):
-            z, logdet = layer(z, logdet, reverse=False)
+            z, logdet = layer(z, y_onehot=y_onehot, logdet=logdet, reverse=False)
         return z, logdet
 
-    def decode(self, z, temperature=None):
+    def decode(self, z, y_onehot=None, temperature=None):
         for layer in reversed(self.layers):
             if isinstance(layer, Split2d):
-                z, logdet = layer(z, logdet=0, reverse=True, temperature=temperature)
+                z, logdet = layer(
+                    z,
+                    logdet=0,
+                    reverse=True,
+                    temperature=temperature,
+                )
             else:
-                z, logdet = layer(z, logdet=0, reverse=True)
+                z, logdet = layer(z, y_onehot=y_onehot, logdet=0, reverse=True)
         return z
 
 
@@ -281,6 +307,7 @@ class Glow(nn.Module):
             flow_coupling=flow_coupling,
             LU_decomposed=LU_decomposed,
             is_1d=is_1d,
+            condition_features=y_classes,
         )
         self.is_1d = is_1d
 
@@ -339,7 +366,7 @@ class Glow(nn.Module):
             yp = self.project_ycond(y_onehot)
             shape = [h.shape[0], channels] + [] if self.is_1d else [1, 1]
             h += yp.view(*shape)
-        
+
         return split_feature(h, "split")
 
     def forward(self, x=None, y_onehot=None, z=None, temperature=None, reverse=False):
@@ -348,7 +375,7 @@ class Glow(nn.Module):
         else:
             return self.normal_flow(x, y_onehot)
 
-    def normal_flow(self, x, y_onehot):
+    def normal_flow(self, x, y_onehot=None):
         if self.is_1d:
             b, c = x.shape
         else:
@@ -359,7 +386,7 @@ class Glow(nn.Module):
         else:
             x, logdet = uniform_binning_correction(x)
 
-        z, objective = self.flow(x, logdet=logdet, reverse=False)
+        z, objective = self.flow(x, y_onehot=y_onehot, logdet=logdet, reverse=False)
 
         mean, logs = self.prior(x, y_onehot)
         objective += gaussian_likelihood(mean, logs, z)
@@ -382,7 +409,7 @@ class Glow(nn.Module):
             if z is None:
                 mean, logs = self.prior(z, y_onehot)
                 z = gaussian_sample(mean, logs, temperature)
-            x = self.flow(z, temperature=temperature, reverse=True)
+            x = self.flow(z, y_onehot=y_onehot, temperature=temperature, reverse=True)
         return x
 
     def set_actnorm_init(self):

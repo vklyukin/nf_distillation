@@ -20,6 +20,7 @@ class FlowNetGetAllOutputs(FlowNet):
         flow_coupling,
         LU_decomposed,
         is_1d=False,
+        condition_features=0,
     ):
         super().__init__(
             image_shape,
@@ -31,20 +32,23 @@ class FlowNetGetAllOutputs(FlowNet):
             flow_coupling,
             LU_decomposed,
             is_1d=is_1d,
+            condition_features=condition_features,
         )
 
-    def encode(self, z, logdet=0.0):
+    def encode(self, z, y_onehot=None, logdet=0.0):
         all_outputs = []
         layer_input = z
 
         for layer, shape in zip(self.layers, self.output_shapes):
-            layer_output, logdet = layer(layer_input, logdet, reverse=False)
+            layer_output, logdet = layer(
+                layer_input, y_onehot=y_onehot, logdet=logdet, reverse=False
+            )
             all_outputs.append(layer_output)
             layer_input = layer_output
 
         return all_outputs, logdet
 
-    def decode(self, z, temperature=None):
+    def decode(self, z, y_onehot=None, temperature=None):
         all_outputs = []
         layer_input = z
 
@@ -55,7 +59,9 @@ class FlowNetGetAllOutputs(FlowNet):
                     layer_input, logdet=0, reverse=True, temperature=temperature
                 )
             else:
-                layer_output, logdet = layer(layer_input, logdet=0, reverse=True)
+                layer_output, logdet = layer(
+                    layer_input, y_onehot=y_onehot, logdet=0, reverse=True
+                )
 
             all_outputs.append(layer_output)
             layer_input = layer_output
@@ -104,6 +110,7 @@ class GlowGetAllOutputs(Glow):
             flow_coupling=flow_coupling,
             LU_decomposed=LU_decomposed,
             is_1d=is_1d,
+            condition_features=y_classes if y_condition else 0,
         )
 
     def normal_flow(self, x, y_onehot):
@@ -117,7 +124,7 @@ class GlowGetAllOutputs(Glow):
         else:
             x, logdet = uniform_binning_correction(x)
 
-        z, objective = self.flow(x, logdet=logdet, reverse=False)
+        z, objective = self.flow(x, y_onehot=y_onehot, logdet=logdet, reverse=False)
 
         last_z = z[-1]
 
