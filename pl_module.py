@@ -346,7 +346,7 @@ class NFModel(pl.LightningModule):
 
     def calc_roc_auc(self, generated, real):
         X = np.concatenate((generated, real))
-        y = [0] * generated.shape[0] + [1] * real.shape[1]
+        y = [0] * generated.shape[0] + [1] * real.shape[0]
 
         X_train, X_test, y_train, y_test = train_test_split(
             X,
