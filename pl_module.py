@@ -9,6 +9,9 @@ import seaborn as sns
 import torch
 import torch.nn as nn
 import typing as tp
+from catboost import CatBoostClassifier
+from sklearn import metrics
+from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
@@ -246,11 +249,21 @@ class NFModel(pl.LightningModule):
             self.sample_images()
             self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
         else:
-            self.get_histograms(
-                torch.cat([output["generated"] for output in outputs]),
-                torch.cat([output["real"] for output in outputs]),
+            generated = (
+                torch.cat([output["generated"] for output in outputs])
+                .detach()
+                .cpu()
+                .numpy()
             )
+            real = (
+                torch.cat([output["real"] for output in outputs]).detach().cpu().numpy()
+            )
+
+            self.get_histograms(generated, real)
             self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
+
+            roc_auc = self.calc_roc_auc(generated, real)
+            self.log("val_epoch_roc_auc", roc_auc)
 
     def calc_fid(self, fid_mode) -> float:
         if fid_mode == "train":
@@ -309,7 +322,7 @@ class NFModel(pl.LightningModule):
             ax.set_title(feature_name)
 
             sns.distplot(
-                real[:, feature_index].detach().cpu().numpy(),
+                real[:, feature_index],
                 bins=100,
                 label="real",
                 hist_kws={"alpha": 1.0},
@@ -319,7 +332,7 @@ class NFModel(pl.LightningModule):
             )
 
             sns.distplot(
-                generated[:, feature_index].detach().cpu().numpy(),
+                generated[:, feature_index],
                 bins=100,
                 label="gen",
                 hist_kws={"alpha": 0.5},
@@ -330,6 +343,28 @@ class NFModel(pl.LightningModule):
 
             if feature_index == 0:
                 ax.legend()
+
+    def calc_roc_auc(self, generated, real):
+        X = np.concatenate((generated, real))
+        y = [0] * generated.shape[0] + [1] * real.shape[1]
+
+        X_train, X_test, y_train, y_test = train_test_split(
+            X,
+            y,
+            test_size=0.33,
+            random_state=self.params["seed"],
+            stratify=True,
+            shuffle=True,
+        )
+
+        classifier = CatBoostClassifier(
+            iterations=1000, thread_count=self.params["num_workers"]
+        )
+        classifier.fit(X_train, y_train)
+        predicted = classifier.predict(X_test, y_test)
+
+        fpr, tpr, thresholds = metrics.roc_curve(y_test, predicted, pos_label=1)
+        return metrics.auc(fpr, tpr)
 
     ####################
     # DATA RELATED HOOKS
@@ -370,7 +405,7 @@ class NFModel(pl.LightningModule):
 
     def val_dataloader(self):
         return DataLoader(
-            dataset=self.train_dataset,
+            dataset=self.valid_dataset,
             batch_size=self.params["batch_size"],
             num_workers=self.params["num_workers"],
             shuffle=False,
