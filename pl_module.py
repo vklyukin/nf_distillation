@@ -353,15 +353,15 @@ class NFModel(pl.LightningModule):
             y,
             test_size=0.33,
             random_state=self.params["seed"],
-            stratify=True,
+            stratify=y,
             shuffle=True,
         )
 
         classifier = CatBoostClassifier(
-            iterations=1000, thread_count=self.params["num_workers"]
+            iterations=1000, task_type='GPU'
         )
         classifier.fit(X_train, y_train)
-        predicted = classifier.predict(X_test, y_test)
+        predicted = classifier.predict(X_test)
 
         fpr, tpr, thresholds = metrics.roc_curve(y_test, predicted, pos_label=1)
         return metrics.auc(fpr, tpr)
