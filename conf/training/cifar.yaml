@@ -1,8 +1,8 @@
 architecture: glow
 
-learning_rate: 0.0005
+learning_rate: 0.0000
 optimizer: adam
-n_epochs: 1000
+n_epochs: 1
 batch_size: 128
 
 inherit_p: false
