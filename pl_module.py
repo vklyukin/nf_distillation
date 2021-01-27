@@ -74,11 +74,15 @@ class NFModel(pl.LightningModule):
         sns.set()
 
     def load_checkpoint(self, model, checkpoint_path) -> nn.Module:
-        model_state = {
+        model_state = torch.load(checkpoint_path)
+
+        if "state_dict" in model_state:
+            model_state = {
                 ".".join(k.split(".")[1:]): v 
                 for k, v in torch.load(checkpoint_path)["state_dict"].items()
                 if k.startswith("student.")
-        }
+            }
+
         model.load_state_dict(model_state)
 
         return model

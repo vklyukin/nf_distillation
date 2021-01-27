@@ -1,6 +1,6 @@
 architecture: glow
 
-learning_rate: 0.0000
+learning_rate: 0.0005
 optimizer: adam
 n_epochs: 1
 batch_size: 128
@@ -27,5 +27,5 @@ neptune:
   project_name: vklyukin/norm-flows
   experiment_name: distillation
   tags:
-    - mse
     - cifar10
+    - mse

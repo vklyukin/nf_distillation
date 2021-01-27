@@ -14,4 +14,4 @@ teacher:
   y_classes: 10
   learn_top: false
   y_condition: false
-  checkpoint: /home/vnkljukin/nf/nf_distillation/distillation/NF-151/checkpoints/epoch=103-step=40663.ckpt
+  checkpoint: /data/vnkljukin/nf/models/glow_cifar10/notop_teacher_0.pth
