@@ -13,7 +13,6 @@ from pl_module import NFModel
 
 @hydra.main(config_path="conf", config_name="config")
 def main(config: DictConfig):
-
     neptune_logger = NeptuneLogger(
         project_name=config["neptune"]["project_name"],
         experiment_name=config["neptune"]["experiment_name"],

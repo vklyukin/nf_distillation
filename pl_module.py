@@ -10,13 +10,13 @@ import torch
 import torch.nn as nn
 import typing as tp
 from catboost import CatBoostClassifier
-from sklearn import metrics
+from omegaconf import OmegaConf
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
 from data_utils import get_CIFAR10, get_RICH, postprocess
-from metrics.fid import calculate_fid
+from metrics import calculate_fid, calculate_roc_auc
 from models import (
     create_glow_model,
     gaussian_sample,
@@ -73,10 +73,29 @@ class NFModel(pl.LightningModule):
 
         sns.set()
 
-    def create_model(self, model_name, teacher=None) -> nn.Module:
+    def load_checkpoint(self, model, checkpoint_path) -> nn.Module:
+        model_state = {
+                ".".join(k.split(".")[1:]): v 
+                for k, v in torch.load(checkpoint_path)["state_dict"].items()
+                if k.startswith("student.")
+        }
+        model.load_state_dict(model_state)
+
+        return model
+
+    def create_model(self, model_name) -> nn.Module:
         """Create model from config"""
         if self.params["architecture"].lower() == "glow":
-            return create_glow_model(self.params[model_name])
+            model_params = OmegaConf.to_container(self.params[model_name])
+            del model_params["checkpoint"]
+
+            model = create_glow_model(model_params)
+
+            checkpoint_path = self.params[model_name]["checkpoint"]
+            if checkpoint_path:
+                self.load_checkpoint(model, checkpoint_path)
+
+            return model
         else:
             raise NameError(
                 "Unknown model architecture: {}".format(self.params["architecture"])
@@ -203,13 +222,18 @@ class NFModel(pl.LightningModule):
             self.nll_weight * train_losses["nll"] + self.kd_weight * train_losses["kd"]
         )
 
-        return {
+        output = {
             "nll": train_losses["nll"],
             "kd": train_losses["kd"],
             "loss": result_loss,
             "generated": generated,
             "real": batch[0],
         }
+
+        if self.params["student"]["is_1d"]:
+            output["weights"] = batch[2]
+
+        return output
 
     def epoch_end(self, step_outputs, fid_mode):
         epoch_loss = torch.stack([output["loss"] for output in step_outputs]).mean()
@@ -258,11 +282,17 @@ class NFModel(pl.LightningModule):
             real = (
                 torch.cat([output["real"] for output in outputs]).detach().cpu().numpy()
             )
+            weights = (
+                torch.cat([output["weights"] for output in outputs])
+                .detach()
+                .cpu()
+                .numpy()
+            )
 
             self.get_histograms(generated, real)
             self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
 
-            roc_auc = self.calc_roc_auc(generated, real)
+            roc_auc = self.calc_roc_auc(generated, real, weights)
             self.log("val_epoch_roc_auc", roc_auc)
 
     def calc_fid(self, fid_mode) -> float:
@@ -344,27 +374,34 @@ class NFModel(pl.LightningModule):
             if feature_index == 0:
                 ax.legend()
 
-    def calc_roc_auc(self, generated, real):
+    def calc_roc_auc(self, generated, real, weights):
         X = np.concatenate((generated, real))
-        y = [0] * generated.shape[0] + [1] * real.shape[0]
-
-        X_train, X_test, y_train, y_test = train_test_split(
+        y = np.array([0] * generated.shape[0] + [1] * real.shape[0])
+        weights = np.concatenate((weights, weights))
+        
+        (
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            weights_train,
+            weights_test,
+        ) = train_test_split(
             X,
             y,
+            weights,
             test_size=0.33,
             random_state=self.params["seed"],
             stratify=y,
             shuffle=True,
         )
 
-        classifier = CatBoostClassifier(
-            iterations=1000, task_type='GPU'
-        )
+        classifier = CatBoostClassifier(iterations=1000, task_type="GPU")
         classifier.fit(X_train, y_train)
         predicted = classifier.predict(X_test)
 
-        fpr, tpr, thresholds = metrics.roc_curve(y_test, predicted, pos_label=1)
-        return metrics.auc(fpr, tpr)
+        roc_auc = calculate_roc_auc(y_test, predicted, weights=weights_test)
+        return roc_auc
 
     ####################
     # DATA RELATED HOOKS
