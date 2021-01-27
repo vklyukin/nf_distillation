@@ -12,4 +12,4 @@ student:
   y_classes: 3
   learn_top: false
   y_condition: true
-  checkpoint: outputs/2021-01-26/09-42-27/tabular/NF-181/checkpoints/
+  checkpoint: outputs/2021-01-26/09-42-27/tabular/NF-181/checkpoints/epoch=978-step=120416.ckpt
