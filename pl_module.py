@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 import typing as tp
 from catboost import CatBoostClassifier
+from omegaconf import OmegaConf
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
@@ -73,14 +74,22 @@ class NFModel(pl.LightningModule):
         sns.set()
 
     def load_checkpoint(self, model, checkpoint_path) -> nn.Module:
-        model_state = torch.load(checkpoint_path)
-        print(model_state.keys())
-        raise NotImplementedError
+        model_state = {
+                ".".join(k.split(".")[1:]): v 
+                for k, v in torch.load(checkpoint_path)["state_dict"].items()
+                if k.startswith("student.")
+        }
+        model.load_state_dict(model_state)
+
+        return model
 
     def create_model(self, model_name) -> nn.Module:
         """Create model from config"""
         if self.params["architecture"].lower() == "glow":
-            model = create_glow_model(self.params[model_name])
+            model_params = OmegaConf.to_container(self.params[model_name])
+            del model_params["checkpoint"]
+
+            model = create_glow_model(model_params)
 
             checkpoint_path = self.params[model_name]["checkpoint"]
             if checkpoint_path:
@@ -221,7 +230,7 @@ class NFModel(pl.LightningModule):
             "real": batch[0],
         }
 
-        if self.params["is_1d"]:
+        if self.params["student"]["is_1d"]:
             output["weights"] = batch[2]
 
         return output
@@ -367,11 +376,20 @@ class NFModel(pl.LightningModule):
 
     def calc_roc_auc(self, generated, real, weights):
         X = np.concatenate((generated, real))
-        y = [0] * generated.shape[0] + [1] * real.shape[0]
-
-        X_train, X_test, y_train, y_test = train_test_split(
+        y = np.array([0] * generated.shape[0] + [1] * real.shape[0])
+        weights = np.concatenate((weights, weights))
+        
+        (
+            X_train,
+            X_test,
+            y_train,
+            y_test,
+            weights_train,
+            weights_test,
+        ) = train_test_split(
             X,
             y,
+            weights,
             test_size=0.33,
             random_state=self.params["seed"],
             stratify=y,
@@ -382,7 +400,7 @@ class NFModel(pl.LightningModule):
         classifier.fit(X_train, y_train)
         predicted = classifier.predict(X_test)
 
-        roc_auc = calculate_roc_auc(y_test, predicted, weights=weights)
+        roc_auc = calculate_roc_auc(y_test, predicted, weights=weights_test)
         return roc_auc
 
     ####################
