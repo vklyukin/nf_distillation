@@ -21,6 +21,7 @@ from models import (
     create_glow_model,
     gaussian_sample,
     FlowStep,
+    SqueezeLayer,
     inherit_permutation_matrix,
 )
 from losses import IdentityLoss
@@ -45,17 +46,13 @@ class NFModel(pl.LightningModule):
 
         self.student_kd_indices = []
         for i, layer in enumerate(self.student.flow.layers):
-            if isinstance(layer, FlowStep):
+            if isinstance(layer, SqueezeLayer):
                 self.student_kd_indices.append(i)
 
         self.teacher_kd_indices = []
-        found_flowsteps = 0
         for i, layer in enumerate(self.teacher.flow.layers):
-            if isinstance(layer, FlowStep):
-                found_flowsteps += 1
-
-                if found_flowsteps % 4 == 0:
-                    self.teacher_kd_indices.append(i)
+            if isinstance(layer, SqueezeLayer):
+                self.teacher_kd_indices.append(i)
 
         if self.params["inherit_p"]:
             assert not self.params["teacher"].get(
@@ -82,7 +79,7 @@ class NFModel(pl.LightningModule):
                 for k, v in torch.load(checkpoint_path)["state_dict"].items()
                 if k.startswith("student.")
             }
-
+            
         model.load_state_dict(model_state)
 
         return model
@@ -382,7 +379,7 @@ class NFModel(pl.LightningModule):
         X = np.concatenate((generated, real))
         y = np.array([0] * generated.shape[0] + [1] * real.shape[0])
         weights = np.concatenate((weights, weights))
-        
+
         (
             X_train,
             X_test,
