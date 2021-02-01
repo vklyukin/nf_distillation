@@ -73,7 +73,7 @@ class _ActNorm(nn.Module):
         super().__init__()
         self.is_1d = is_1d
         # register mean and scale
-        size = [1, num_features] + [] if self.is_1d else [1, 1]
+        size = [1, num_features] + ([] if self.is_1d else [1, 1])
         self.bias = nn.Parameter(torch.zeros(*size))
         self.logs = nn.Parameter(torch.zeros(*size))
         self.num_features = num_features
@@ -84,7 +84,7 @@ class _ActNorm(nn.Module):
         if not self.training:
             raise ValueError("In Eval mode, but ActNorm not inited")
 
-        reduction_dim = [0] + [] if self.is_1d else [2, 3]
+        reduction_dim = [0] + ([] if self.is_1d else [2, 3])
 
         with torch.no_grad():
             bias = -torch.mean(input.clone(), dim=reduction_dim, keepdim=True)
@@ -256,7 +256,7 @@ class Conv2dZeros(nn.Module):
         self.logscale_factor = logscale_factor
         self.logs = nn.Parameter(torch.zeros(out_channels, 1, 1))
 
-    def forward(self, input):
+    def forward(self, input, **kwargs):
         output = self.conv(input)
         return output * torch.exp(self.logs * self.logscale_factor)
 
@@ -281,7 +281,7 @@ class Permute2d(nn.Module):
         for i in range(self.num_channels):
             self.indices_inverse[self.indices[i]] = i
 
-    def forward(self, input, reverse=False):
+    def forward(self, input, reverse=False, **kwargs):
         assert len(input.size()) == 4
 
         if not reverse:
@@ -300,7 +300,7 @@ class Split2d(nn.Module):
         h = self.conv(z)
         return split_feature(h, "cross")
 
-    def forward(self, input, logdet=0.0, reverse=False, temperature=None):
+    def forward(self, input, logdet=0.0, reverse=False, temperature=None, **kwargs):
         if reverse:
             z1 = input
             mean, logs = self.split2d_prior(z1)
@@ -319,7 +319,7 @@ class SqueezeLayer(nn.Module):
         super().__init__()
         self.factor = factor
 
-    def forward(self, input, logdet=None, reverse=False):
+    def forward(self, input, logdet=None, reverse=False, **kwargs):
         if reverse:
             output = unsqueeze2d(input, self.factor)
         else:

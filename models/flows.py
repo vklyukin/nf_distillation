@@ -151,7 +151,7 @@ class FlowStep(nn.Module):
             z2 = z2 + shift
             z2 = z2 * scale
             logdet = (
-                torch.sum(torch.log(scale), dim=[1] + [] if self.is_1d else [2, 3])
+                torch.sum(torch.log(scale), dim=[1] + ([] if self.is_1d else [2, 3]))
                 + logdet
             )
         z = torch.cat((z1, z2), dim=1)
@@ -176,7 +176,7 @@ class FlowStep(nn.Module):
             z2 = z2 / scale
             z2 = z2 - shift
             logdet = (
-                -torch.sum(torch.log(scale), dim=[1] + [] if self.is_1d else [2, 3])
+                -torch.sum(torch.log(scale), dim=[1] + ([] if self.is_1d else [2, 3]))
                 + logdet
             )
         z = torch.cat((z1, z2), dim=1)
@@ -252,6 +252,7 @@ class FlowNet(nn.Module):
                 self.layers.append(Split2d(num_channels=C))
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
+
 
     def forward(
         self, input, y_onehot=None, logdet=0.0, reverse=False, temperature=None
@@ -337,15 +338,15 @@ class Glow(nn.Module):
                     1,
                     self.flow.output_shapes[-1][1] * 2,
                 ]
-                + []
+                + ([] 
                 if self.is_1d
-                else [self.flow.output_shapes[-1][2], self.flow.output_shapes[-1][3]]
+                else [self.flow.output_shapes[-1][2], self.flow.output_shapes[-1][3]])
             ),
         )
 
     def prior(self, data, y_onehot=None):
         if data is not None:
-            shape = [data.shape[0], 1] + [] if self.is_1d else [1, 1]
+            shape = [data.shape[0], 1] + ([] if self.is_1d else [1, 1])
             h = self.prior_h.repeat(*shape)
         else:
             # Hardcoded a batch size of 32 here
@@ -353,7 +354,7 @@ class Glow(nn.Module):
                 batch_size = y_onehot.size(0)
             else:
                 batch_size = 32
-            shape = [batch_size, 1] + [] if self.is_1d else [1, 1]
+            shape = [batch_size, 1] + ([] if self.is_1d else [1, 1])
             h = self.prior_h.repeat(shape)
 
         channels = h.size(1)
@@ -364,7 +365,7 @@ class Glow(nn.Module):
         if self.y_condition:
             assert y_onehot is not None
             yp = self.project_ycond(y_onehot)
-            shape = [h.shape[0], channels] + [] if self.is_1d else [1, 1]
+            shape = [h.shape[0], channels] + ([] if self.is_1d else [1, 1])
             h += yp.view(*shape)
 
         return split_feature(h, "split")
