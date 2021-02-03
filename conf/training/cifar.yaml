@@ -2,17 +2,17 @@ architecture: glow
 
 learning_rate: 0.0005
 optimizer: adam
-n_epochs: 1
+n_epochs: 1000
 batch_size: 128
 
 inherit_p: false
 
 loss:
   nll:
-    weight: 1
+    weight: 0.9
   kd:
     name: mse
-    weight: 0
+    weight: 0.1
 
 seed: 42
 
