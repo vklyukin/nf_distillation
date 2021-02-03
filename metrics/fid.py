@@ -76,7 +76,7 @@ def get_activations(images, batch_size):
 
     num_images = images.shape[0]
     inception_network = PartialInceptionNetwork()
-    inception_network = to_cuda(inception_network)
+#    inception_network = to_cuda(inception_network)
     inception_network.eval()
     n_batches = int(np.ceil(num_images / batch_size))
     inception_activations = np.zeros((num_images, 2048), dtype=np.float32)
@@ -85,7 +85,7 @@ def get_activations(images, batch_size):
         end_idx = batch_size * (batch_idx + 1)
 
         ims = images[start_idx:end_idx]
-        ims = to_cuda(ims)
+#        ims = to_cuda(ims)
 
         with torch.no_grad():
             activations = inception_network(ims)
