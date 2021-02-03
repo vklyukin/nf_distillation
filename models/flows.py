@@ -253,7 +253,6 @@ class FlowNet(nn.Module):
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
 
-
     def forward(
         self, input, y_onehot=None, logdet=0.0, reverse=False, temperature=None
     ):
@@ -338,9 +337,14 @@ class Glow(nn.Module):
                     1,
                     self.flow.output_shapes[-1][1] * 2,
                 ]
-                + ([] 
-                if self.is_1d
-                else [self.flow.output_shapes[-1][2], self.flow.output_shapes[-1][3]])
+                + (
+                    []
+                    if self.is_1d
+                    else [
+                        self.flow.output_shapes[-1][2],
+                        self.flow.output_shapes[-1][3],
+                    ]
+                )
             ),
         )
 

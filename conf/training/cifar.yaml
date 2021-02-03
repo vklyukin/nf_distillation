@@ -12,12 +12,15 @@ loss:
     weight: 0.9
   kd:
     name: mse
+    weight: 0.
+  perceptual:
+    name: vgg
     weight: 0.1
 
 seed: 42
 
-gpus: 1
-num_workers: 10
+gpus: 0
+num_workers: 1
 fid_samples: 2048
 
 to_test: false
@@ -28,4 +31,4 @@ neptune:
   experiment_name: distillation
   tags:
     - cifar10
-    - mse
+    - vgg

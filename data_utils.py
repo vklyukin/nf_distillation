@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch.utils.data import TensorDataset
 from torchvision import transforms, datasets
 
-from rich_utils import get_merged_typed_dataset
+from rich_utils import RICHDataProvider
 
 n_bits = 8
 
@@ -114,7 +114,7 @@ def get_RICH(particle, drop_weights, dataroot, download):
     path = Path(dataroot) / "data" / "data_calibsample"
     # TODO: download dataset if needed
 
-    train_data, test_data, scaler = get_merged_typed_dataset(
+    train_data, test_data, scaler = RICHDataProvider().get_merged_typed_dataset(
         particle, dtype=np.float32, log=True
     )
 

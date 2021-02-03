@@ -23,6 +23,7 @@ from models import (
     FlowStep,
     SqueezeLayer,
     inherit_permutation_matrix,
+    VGGPerceptualLoss,
 )
 from losses import IdentityLoss
 
@@ -38,21 +39,15 @@ class NFModel(pl.LightningModule):
             self.nll_weight,
             self.kd_loss,
             self.kd_weight,
+            self.perceptual_loss,
+            self.perceptual_weight,
         ) = self.create_loss_func()
 
         if not self.params["student"].get("is_1d", False):
             mean, logs = self.student.prior(None, None)
             self.register_buffer("latent", gaussian_sample(mean, logs, 1))
 
-        self.student_kd_indices = []
-        for i, layer in enumerate(self.student.flow.layers):
-            if isinstance(layer, SqueezeLayer):
-                self.student_kd_indices.append(i)
-
-        self.teacher_kd_indices = []
-        for i, layer in enumerate(self.teacher.flow.layers):
-            if isinstance(layer, SqueezeLayer):
-                self.teacher_kd_indices.append(i)
+        self.student_kd_indices, self.teacher_kd_indices = self._get_kd_indices()
 
         if self.params["inherit_p"]:
             assert not self.params["teacher"].get(
@@ -70,16 +65,29 @@ class NFModel(pl.LightningModule):
 
         sns.set()
 
+    def _get_kd_indices(self) -> tp.Tuple[tp.List, tp.List]:
+        student_kd_indices = []
+        for i, layer in enumerate(self.student.flow.layers):
+            if isinstance(layer, SqueezeLayer):
+                student_kd_indices.append(i)
+
+        teacher_kd_indices = []
+        for i, layer in enumerate(self.teacher.flow.layers):
+            if isinstance(layer, SqueezeLayer):
+                teacher_kd_indices.append(i)
+
+        return student_kd_indices, teacher_kd_indices
+
     def load_checkpoint(self, model, checkpoint_path) -> nn.Module:
         model_state = torch.load(checkpoint_path)
 
         if "state_dict" in model_state:
             model_state = {
-                ".".join(k.split(".")[1:]): v 
+                ".".join(k.split(".")[1:]): v
                 for k, v in torch.load(checkpoint_path)["state_dict"].items()
                 if k.startswith("student.")
             }
-            
+
         model.load_state_dict(model_state)
 
         return model
@@ -112,6 +120,9 @@ class NFModel(pl.LightningModule):
         kd_loss_description = loss_description["kd"]
         kd_weight = kd_loss_description["weight"]
 
+        perceptual_loss_description = loss_description["perceptual"]
+        perceptual_weight = perceptual_loss_description["weight"]
+
         if kd_loss_description["name"].lower() == "mse":
             kd_loss = nn.MSELoss(reduction="mean")
         else:
@@ -119,7 +130,23 @@ class NFModel(pl.LightningModule):
                 "Unkown KD loss name: {}".format(kd_loss_description["name"])
             )
 
-        return nll_loss, nll_weight, kd_loss, kd_weight
+        if perceptual_loss_description["name"].lower() == "vgg":
+            perceptual_loss = VGGPerceptualLoss(resize=True)
+        else:
+            raise NameError(
+                "Unkown perceptual loss name: {}".format(
+                    perceptual_loss_description["name"]
+                )
+            )
+
+        return (
+            nll_loss,
+            nll_weight,
+            kd_loss,
+            kd_weight,
+            perceptual_loss,
+            perceptual_weight,
+        )
 
     def forward(self, batch):
         """Return latent variables and student NLL"""
@@ -133,7 +160,7 @@ class NFModel(pl.LightningModule):
         else:
             student_z, student_nll, _ = self.student(x, None)
 
-        if self.params["loss"]["kd"]["weight"] > 0:
+        if self.kd_weight > 0:
             with torch.no_grad():
                 if self.params["student"]["y_condition"]:
                     teacher_z, _, _ = self.teacher(x, y)
@@ -142,15 +169,42 @@ class NFModel(pl.LightningModule):
         else:
             teacher_z = None
 
+        if self.perceptual_weight > 0:
+            y_onehot = torch.zeros((self.params["batch_size"],))
+            mean, logs = self.student.prior(None, y_onehot=y_onehot)
+            latent = gaussian_sample(mean, logs, 1)
+
+            student_x = (
+                torch.clamp(
+                    self.student(z=latent, temperature=1, reverse=True)[-1], -0.5, 0.5
+                )
+                + 0.5
+            )
+            with torch.no_grad():
+                teacher_x = (
+                    torch.clamp(
+                        self.teacher(z=latent, temperature=1, reverse=True)[-1],
+                        -0.5,
+                        0.5,
+                    )
+                    + 0.5
+                )
+        else:
+            student_x = None
+            teacher_x = None
+
         return {
             "student_nll": student_nll,
             "student_z": student_z,
             "teacher_z": teacher_z,
+            "student_x": student_x,
+            "teacher_x": teacher_x,
         }
 
     def loss(self, model_outputs, *args):
         """Count loss function value"""
         kd_loss_value = torch.tensor(0.0, device=self.device)
+        perceptual_loss_value = torch.tensor(0.0, device=self.device)
 
         if self.kd_weight > 0:
             student_z = model_outputs["student_z"]
@@ -163,9 +217,16 @@ class NFModel(pl.LightningModule):
                     student_z[student_layer_id], teacher_z[teacher_layer_id]
                 )
 
+        if self.perceptual_weight > 0:
+            student_x = model_outputs["student_x"]
+            teacher_x = model_outputs["teacher_x"]
+
+            perceptual_loss_value += self.perceptual_loss(student_x, teacher_x)
+
         return {
             "nll": model_outputs["student_nll"].mean(),
             "kd": kd_loss_value,
+            "perceptual": perceptual_loss_value,
         }
 
     def generate(self, batch):
@@ -201,9 +262,12 @@ class NFModel(pl.LightningModule):
 
         self.log("train_batch_nll", train_losses["nll"], on_step=True)
         self.log("train_batch_kd", train_losses["kd"], on_step=True)
+        self.log("train_batch_perceptual", train_losses["perceptual"], on_step=True)
 
         result_loss = (
-            self.nll_weight * train_losses["nll"] + self.kd_weight * train_losses["kd"]
+            self.nll_weight * train_losses["nll"]
+            + self.kd_weight * train_losses["kd"]
+            + self.perceptual_weight * train_losses["perceptual"]
         )
 
         self.log("train_batch_loss", result_loss, on_step=True, prog_bar=True)
@@ -211,6 +275,7 @@ class NFModel(pl.LightningModule):
         return {
             "nll": train_losses["nll"],
             "kd": train_losses["kd"],
+            "perceptual": train_losses["perceptual"],
             "loss": result_loss,
         }
 
@@ -220,12 +285,15 @@ class NFModel(pl.LightningModule):
         generated = self.generate(batch)
 
         result_loss = (
-            self.nll_weight * train_losses["nll"] + self.kd_weight * train_losses["kd"]
+            self.nll_weight * train_losses["nll"]
+            + self.kd_weight * train_losses["kd"]
+            + self.perceptual_weight * train_losses["perceptual"]
         )
 
         output = {
             "nll": train_losses["nll"],
             "kd": train_losses["kd"],
+            "perceptual": train_losses["perceptual"],
             "loss": result_loss,
             "generated": generated,
             "real": batch[0],
@@ -240,11 +308,15 @@ class NFModel(pl.LightningModule):
         epoch_loss = torch.stack([output["loss"] for output in step_outputs]).mean()
         epoch_nll = torch.stack([output["nll"] for output in step_outputs]).mean()
         epoch_kd = torch.stack([output["kd"] for output in step_outputs]).mean()
+        epoch_perceptual = torch.stack(
+            [output["perceptual"] for output in step_outputs]
+        ).mean()
 
         metrics = {
             "epoch_loss": epoch_loss,
             "epoch_nll": epoch_nll,
             "epoch_kd": epoch_kd,
+            "epoch_perceptual": epoch_perceptual,
         }
 
         if not self.params["student"].get("is_1d", False):
@@ -258,6 +330,7 @@ class NFModel(pl.LightningModule):
         self.log("train_epoch_loss", metrics["epoch_loss"])
         self.log("train_epoch_nll", metrics["epoch_nll"])
         self.log("train_epoch_kd", metrics["epoch_kd"])
+        self.log("train_epoch_perceptual", metrics["epoch_perceptual"])
 
         if not self.params["student"].get("is_1d", False):
             self.log("train_epoch_fid", metrics["epoch_fid"])
@@ -267,6 +340,7 @@ class NFModel(pl.LightningModule):
         self.log("val_epoch_loss", metrics["epoch_loss"])
         self.log("val_epoch_nll", metrics["epoch_nll"])
         self.log("val_epoch_kd", metrics["epoch_kd"])
+        self.log("val_epoch_perceptual", metrics["epoch_perceptual"])
 
         if not self.params["student"].get("is_1d", False):
             self.log("val_epoch_fid", metrics["epoch_fid"])
