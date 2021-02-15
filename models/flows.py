@@ -61,6 +61,7 @@ class FlowStep(nn.Module):
         super().__init__()
         self.is_1d = is_1d
         self.flow_coupling = flow_coupling
+        self.flow_permutation_type = flow_permutation
 
         if self.is_1d:
             self.actnorm = ActNorm1d(in_channels, actnorm_scale)
@@ -68,30 +69,21 @@ class FlowStep(nn.Module):
             self.actnorm = ActNorm2d(in_channels, actnorm_scale)
 
         # 2. permute
-        if flow_permutation == "invconv":
+        if self.flow_permutation_type == "invconv":
             self.invconv = InvertibleConv1x1(
                 in_channels, LU_decomposed=LU_decomposed, is_1d=is_1d
             )
-            self.flow_permutation = lambda z, logdet, rev: self.invconv(z, logdet, rev)
-        elif flow_permutation == "shuffle":
+        elif self.flow_permutation_type == "shuffle":
 
             if self.is_1d:
                 raise RuntimeError("Permutation is not supported is 1d mode")
 
             self.shuffle = Permute2d(in_channels, shuffle=True)
-            self.flow_permutation = lambda z, logdet, rev: (
-                self.shuffle(z, rev),
-                logdet,
-            )
         else:
             if self.is_1d:
                 raise RuntimeError("Permutation is not supported is 1d mode")
 
             self.reverse = Permute2d(in_channels, shuffle=False)
-            self.flow_permutation = lambda z, logdet, rev: (
-                self.reverse(z, rev),
-                logdet,
-            )
 
         # 3. coupling
         if flow_coupling == "additive":
@@ -120,6 +112,14 @@ class FlowStep(nn.Module):
                     out_block_channels,
                     hidden_channels,
                 )
+
+    def flow_permutation(self, z, logdet, rev):
+        if self.flow_permutation_type == "invconv":
+            return self.invconv(z, logdet, rev)
+        elif self.flow_permutation_type == "shuffle":
+            return self.shuffle(z, rev), logdet
+        else:
+            return self.reverse(z, rev), logdet
 
     def forward(self, input, y_onehot=None, logdet=None, reverse=False):
         if not reverse:
@@ -253,7 +253,6 @@ class FlowNet(nn.Module):
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
 
-
     def forward(
         self, input, y_onehot=None, logdet=0.0, reverse=False, temperature=None
     ):
@@ -338,9 +337,14 @@ class Glow(nn.Module):
                     1,
                     self.flow.output_shapes[-1][1] * 2,
                 ]
-                + ([] 
-                if self.is_1d
-                else [self.flow.output_shapes[-1][2], self.flow.output_shapes[-1][3]])
+                + (
+                    []
+                    if self.is_1d
+                    else [
+                        self.flow.output_shapes[-1][2],
+                        self.flow.output_shapes[-1][3],
+                    ]
+                )
             ),
         )
 
