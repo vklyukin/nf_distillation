@@ -9,17 +9,17 @@ inherit_p: false
 
 loss:
   nll:
-    weight: 0.9
+    weight: 0.8
   kd:
     name: mse
-    weight: 0.
+    weight: 0.1
   perceptual:
     name: vgg
     weight: 0.1
 
 seed: 42
 
-gpus: 2
+gpus: 1
 num_workers: 10
 fid_samples: 2048
 
@@ -32,3 +32,4 @@ neptune:
   tags:
     - cifar10
     - perceptual
+    - mse
