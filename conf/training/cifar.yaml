@@ -15,12 +15,13 @@ loss:
     weight: 0.1
   perceptual:
     name: vgg
+    checkpoint: ./data/weights/vgg16-397923af.pth
     weight: 0.1
 
 seed: 42
 
-gpus: 1
-num_workers: 10
+gpus: 0
+num_workers: 1
 fid_samples: 2048
 
 to_test: false

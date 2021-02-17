@@ -35,7 +35,6 @@ class NFModel(pl.LightningModule):
         self.teacher = self.create_model(model_name="teacher")
         self.student = self.create_model(model_name="student")
         (
-            self.nll_loss,
             self.nll_weight,
             self.kd_loss,
             self.kd_weight,
@@ -79,7 +78,12 @@ class NFModel(pl.LightningModule):
         return student_kd_indices, teacher_kd_indices
 
     def load_checkpoint(self, model, checkpoint_path) -> nn.Module:
-        model_state = torch.load(checkpoint_path)
+        model_state = torch.load(
+            checkpoint_path,
+            map_location=torch.device("cuda")
+            if torch.cuda.is_available()
+            else torch.device("cpu"),
+        )
 
         if "state_dict" in model_state:
             model_state = {
@@ -114,7 +118,6 @@ class NFModel(pl.LightningModule):
         """Create loss function from config"""
         loss_description = self.params["loss"]
 
-        nll_loss = IdentityLoss()
         nll_weight = loss_description["nll"]["weight"]
 
         kd_loss_description = loss_description["kd"]
@@ -131,7 +134,9 @@ class NFModel(pl.LightningModule):
             )
 
         if perceptual_loss_description["name"].lower() == "vgg":
-            perceptual_loss = VGGPerceptualLoss(resize=True)
+            perceptual_loss = VGGPerceptualLoss(
+                resize=True, checkpoint_path=perceptual_loss_description["checkpoint"]
+            )
         else:
             raise NameError(
                 "Unkown perceptual loss name: {}".format(
@@ -140,7 +145,6 @@ class NFModel(pl.LightningModule):
             )
 
         return (
-            nll_loss,
             nll_weight,
             kd_loss,
             kd_weight,

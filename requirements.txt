@@ -1,3 +1,5 @@
 pytorch
 neptune-client
 cv2
+seaborn
+pytorch-lightning

@@ -1,2 +1,2 @@
 #!/bin/bash
-python train.py
+./train.py hydra.run.dir=. hydra.output_subdir=null hydra/job_logging=disabled hydra/hydra_logging=disabled 
