@@ -20,8 +20,8 @@ loss:
 
 seed: 42
 
-gpus: 0
-num_workers: 1
+gpus: 1
+num_workers: 10
 fid_samples: 2048
 
 to_test: false
