@@ -405,7 +405,13 @@ class NFModel(pl.LightningModule):
             gen_data_for_fid = np.concatenate(gen_data_for_fid)
             gen_data_for_fid = np.transpose(gen_data_for_fid, (0, 2, 3, 1))
 
-        fid_score = calculate_fid(real_data_for_fid, gen_data_for_fid, False, 128)
+        fid_score = calculate_fid(
+            real_data_for_fid,
+            gen_data_for_fid,
+            False,
+            128,
+            self.params["inception_checkpoint"],
+        )
 
         return fid_score
 

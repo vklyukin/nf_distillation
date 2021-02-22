@@ -22,7 +22,9 @@ seed: 42
 
 gpus: 1
 num_workers: 10
+
 fid_samples: 2048
+inception_checkpoint: ./data/weights/inception_v3.pth
 
 to_test: false
 track_grad_norm: false
