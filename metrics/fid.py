@@ -25,9 +25,19 @@ def to_cuda(elements):
 
 
 class PartialInceptionNetwork(nn.Module):
-    def __init__(self, transform_input=True):
+    def __init__(self, checkpoint_path=None, transform_input=True):
         super().__init__()
-        self.inception_network = inception_v3(pretrained=True)
+        self.inception_network = inception_v3(pretrained=(checkpoint_path is None))
+
+        if checkpoint_path is not None:
+            inception_state = torch.load(
+                checkpoint_path,
+                map_location=torch.device("cuda")
+                if torch.cuda.is_available()
+                else torch.device("cpu"),
+            )
+            self.inception_network.load_state_dict(inception_state)
+
         self.inception_network.Mixed_7c.register_forward_hook(self.output_hook)
         self.transform_input = transform_input
 
@@ -75,18 +85,9 @@ def get_activations(images, batch_size, checkpoint_path):
     ), "Expected input shape to be: (N,3,299,299)" + ", but got {}".format(images.shape)
 
     num_images = images.shape[0]
-    inception_network = PartialInceptionNetwork()
-
-    if checkpoint_path is not None:
-        inception_state = torch.load(
-            checkpoint_path,
-            map_location=torch.device("cuda")
-            if torch.cuda.is_available()
-            else torch.device("cpu"),
-        )
-        inception_network.load_state_dict(inception_state)
-
+    inception_network = PartialInceptionNetwork(checkpoint_path)
     inception_network.eval()
+
     n_batches = int(np.ceil(num_images / batch_size))
     inception_activations = np.zeros((num_images, 2048), dtype=np.float32)
     for batch_idx in range(n_batches):
