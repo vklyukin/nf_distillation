@@ -32,9 +32,7 @@ class PartialInceptionNetwork(nn.Module):
         if checkpoint_path is not None:
             inception_state = torch.load(
                 checkpoint_path,
-                map_location=torch.device("cuda")
-                if torch.cuda.is_available()
-                else torch.device("cpu"),
+                map_location=torch.device("cpu"),
             )
             self.inception_network.load_state_dict(inception_state)
 
