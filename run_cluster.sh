@@ -1,5 +1,3 @@
 #!/bin/bash
-#SBATCH --gpus=1
-#SBATCH -c 11
-#SBATCH --partition=normal
-python train.py
+
+srun -t 15000 --gpus=1 -p normal -c 11 train.sh TORCH_HOME=/home/martemev/vklyukin/weights/models

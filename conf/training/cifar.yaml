@@ -15,13 +15,16 @@ loss:
     weight: 0.1
   perceptual:
     name: vgg
+    checkpoint: ./data/weights/vgg16-397923af.pth
     weight: 0.1
 
 seed: 42
 
 gpus: 1
 num_workers: 10
+
 fid_samples: 2048
+inception_checkpoint: ./data/weights/inception_v3.pth
 
 to_test: false
 track_grad_norm: false

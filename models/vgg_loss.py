@@ -3,9 +3,17 @@ import torchvision
 
 
 class VGGPerceptualLoss(torch.nn.Module):
-    def __init__(self, resize=True):
+    def __init__(self, resize=True, checkpoint_path=None):
         super(VGGPerceptualLoss, self).__init__()
-        vgg_features = torchvision.models.vgg16(pretrained=True).features
+
+        if checkpoint_path is None:
+            vgg_model = torchvision.models.vgg16(pretrained=True)
+        else:
+            vgg_model = torchvision.models.vgg16(pretrained=False)
+            vgg_model_state = torch.load(checkpoint_path)
+            vgg_model.load_state_dict(vgg_model_state)
+
+        vgg_features = vgg_model.features
 
         blocks = [
             vgg_features[:4].eval(),

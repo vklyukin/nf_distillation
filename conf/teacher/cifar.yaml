@@ -14,4 +14,4 @@ teacher:
   y_classes: 10
   learn_top: false
   y_condition: false
-  checkpoint: /data/vnkljukin/nf/models/glow_cifar10/notop_teacher_0.pth
+  checkpoint: ./data/weights/notop_teacher_0.pth

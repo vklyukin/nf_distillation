@@ -25,9 +25,17 @@ def to_cuda(elements):
 
 
 class PartialInceptionNetwork(nn.Module):
-    def __init__(self, transform_input=True):
+    def __init__(self, checkpoint_path=None, transform_input=True):
         super().__init__()
-        self.inception_network = inception_v3(pretrained=True)
+        self.inception_network = inception_v3(pretrained=(checkpoint_path is None))
+
+        if checkpoint_path is not None:
+            inception_state = torch.load(
+                checkpoint_path,
+                map_location=torch.device("cpu"),
+            )
+            self.inception_network.load_state_dict(inception_state)
+
         self.inception_network.Mixed_7c.register_forward_hook(self.output_hook)
         self.transform_input = transform_input
 
@@ -59,7 +67,7 @@ class PartialInceptionNetwork(nn.Module):
         return activations
 
 
-def get_activations(images, batch_size):
+def get_activations(images, batch_size, checkpoint_path):
     """
     Calculates activations for last pool layer for all iamges
     --
@@ -75,9 +83,9 @@ def get_activations(images, batch_size):
     ), "Expected input shape to be: (N,3,299,299)" + ", but got {}".format(images.shape)
 
     num_images = images.shape[0]
-    inception_network = PartialInceptionNetwork()
-#    inception_network = to_cuda(inception_network)
+    inception_network = PartialInceptionNetwork(checkpoint_path)
     inception_network.eval()
+
     n_batches = int(np.ceil(num_images / batch_size))
     inception_activations = np.zeros((num_images, 2048), dtype=np.float32)
     for batch_idx in range(n_batches):
@@ -85,7 +93,7 @@ def get_activations(images, batch_size):
         end_idx = batch_size * (batch_idx + 1)
 
         ims = images[start_idx:end_idx]
-#        ims = to_cuda(ims)
+        #        ims = to_cuda(ims)
 
         with torch.no_grad():
             activations = inception_network(ims)
@@ -101,7 +109,7 @@ def get_activations(images, batch_size):
     return inception_activations
 
 
-def calculate_activation_statistics(images, batch_size):
+def calculate_activation_statistics(images, batch_size, checkpoint_path=None):
     """Calculates the statistics used by FID
     Args:
         images: torch.tensor, shape: (N, 3, H, W), dtype: torch.float32 in range 0 - 1
@@ -111,7 +119,7 @@ def calculate_activation_statistics(images, batch_size):
         sigma:  covariance matrix over all activations from the last pool layer
                 of the inception model.
     """
-    act = get_activations(images, batch_size)
+    act = get_activations(images, batch_size, checkpoint_path)
     mu = np.mean(act, axis=0)
     sigma = np.cov(act, rowvar=False)
     return mu, sigma
@@ -227,7 +235,9 @@ def preprocess_images(images, use_multiprocessing):
 
 
 @torch.no_grad()
-def calculate_fid(images1, images2, use_multiprocessing, batch_size):
+def calculate_fid(
+    images1, images2, use_multiprocessing, batch_size, checkpoint_path=None
+):
     """Calculate FID between images1 and images2
     Args:
         images1: np.array, shape: (N, H, W, 3), dtype: np.float32 between 0-1 or np.uint8
@@ -239,8 +249,8 @@ def calculate_fid(images1, images2, use_multiprocessing, batch_size):
     """
     images1 = preprocess_images(images1, use_multiprocessing)
     images2 = preprocess_images(images2, use_multiprocessing)
-    mu1, sigma1 = calculate_activation_statistics(images1, batch_size)
-    mu2, sigma2 = calculate_activation_statistics(images2, batch_size)
+    mu1, sigma1 = calculate_activation_statistics(images1, batch_size, checkpoint_path)
+    mu2, sigma2 = calculate_activation_statistics(images2, batch_size, checkpoint_path)
     fid = calculate_frechet_distance(mu1, sigma1, mu2, sigma2)
     return fid
 
