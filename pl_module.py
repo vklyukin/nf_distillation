@@ -233,6 +233,7 @@ class NFModel(pl.LightningModule):
             "perceptual": perceptual_loss_value,
         }
 
+    @torch.no_grad()
     def generate(self, batch):
         """Generate x from noise conditioning on batch"""
 
@@ -283,6 +284,7 @@ class NFModel(pl.LightningModule):
             "loss": result_loss,
         }
 
+    @torch.no_grad()
     def validation_step(self, batch, batch_idx):
         model_outputs = self.forward(batch)
         train_losses = self.loss(model_outputs)
@@ -374,6 +376,7 @@ class NFModel(pl.LightningModule):
             roc_auc = self.calc_roc_auc(generated, real, weights)
             self.log("val_epoch_roc_auc", roc_auc)
 
+    @torch.no_grad()
     def calc_fid(self, fid_mode) -> float:
         if fid_mode == "train":
             dataset = self.train_dataset
@@ -415,6 +418,7 @@ class NFModel(pl.LightningModule):
 
         return fid_score
 
+    @torch.no_grad()
     def sample_images(self):
         student_samples = self.student(reverse=True, z=self.latent, temperature=1)[-1]
         images = postprocess(student_samples).cpu()
