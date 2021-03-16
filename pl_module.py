@@ -137,6 +137,8 @@ class NFModel(pl.LightningModule):
             perceptual_loss = VGGPerceptualLoss(
                 resize=True, checkpoint_path=perceptual_loss_description["checkpoint"]
             )
+        elif perceptual_loss_description["name"].lower() == "l1":
+            perceptual_loss = nn.L1Loss()
         else:
             raise NameError(
                 "Unkown perceptual loss name: {}".format(
