@@ -9,14 +9,14 @@ inherit_p: false
 
 loss:
   nll:
-    weight: 0.8
+    weight: 0.999
   kd:
     name: mse
-    weight: 0.1
+    weight: 0
   perceptual:
     name: vgg
     checkpoint: ./data/weights/vgg16-397923af.pth
-    weight: 0.1
+    weight: 0.001
 
 seed: 42
 
@@ -35,4 +35,3 @@ neptune:
   tags:
     - cifar10
     - perceptual
-    - mse
