@@ -59,7 +59,7 @@ def get_CIFAR10(augment, dataroot, download):
         train=True,
         transform=train_transform,
         target_transform=one_hot_encode,
-	download=False,
+        download=False,
     )
 
     test_dataset = datasets.CIFAR10(

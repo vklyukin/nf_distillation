@@ -112,6 +112,8 @@ class FlowStep(nn.Module):
                     out_block_channels,
                     hidden_channels,
                 )
+        else:
+            raise NameError(f"Unknown coupling type: {flow_coupling}")
 
     def flow_permutation(self, z, logdet, rev):
         if self.flow_permutation_type == "invconv":

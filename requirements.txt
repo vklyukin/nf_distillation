@@ -1,5 +1,7 @@
-pytorch
-neptune-client
 cv2
-seaborn
+hydra-core
+neptune-client
+pytorch
 pytorch-lightning
+seaborn
+torchvision
