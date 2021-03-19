@@ -10,20 +10,6 @@ from torch import nn
 from torchvision.models import inception_v3
 
 
-def to_cuda(elements):
-    """
-    Transfers elements to cuda if GPU is available
-    Args:
-        elements: torch.tensor or torch.nn.module
-        --
-    Returns:
-        elements: same as input on GPU memory, if available
-    """
-    if torch.cuda.is_available():
-        return elements.cuda()
-    return elements
-
-
 class PartialInceptionNetwork(nn.Module):
     def __init__(self, checkpoint_path=None, transform_input=True):
         super().__init__()
@@ -93,7 +79,6 @@ def get_activations(images, batch_size, checkpoint_path):
         end_idx = batch_size * (batch_idx + 1)
 
         ims = images[start_idx:end_idx]
-        #        ims = to_cuda(ims)
 
         with torch.no_grad():
             activations = inception_network(ims)

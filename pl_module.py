@@ -25,7 +25,6 @@ from models import (
     inherit_permutation_matrix,
     VGGPerceptualLoss,
 )
-from losses import IdentityLoss
 
 
 class NFModel(pl.LightningModule):

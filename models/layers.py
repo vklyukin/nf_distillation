@@ -2,6 +2,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.distributions as D
 
 from .utils import split_feature, compute_same_pad
 
@@ -12,20 +13,20 @@ def gaussian_p(mean, logs, x):
             k = 1 (Independent)
             Var = logs ** 2
     """
-    c = math.log(2 * math.pi)
-    return -0.5 * (logs * 2.0 + ((x - mean) ** 2) / torch.exp(logs * 2.0) + c)
+    distribution = D.normal.Normal(mean, torch.exp(logs))
+    return distribution.log_prob(x)
 
 
 def gaussian_likelihood(mean, logs, x):
-    p = gaussian_p(mean, logs, x)
+    log_prob = gaussian_p(mean, logs, x)
     dimensions = list(range(len(x.shape)))
-    return torch.sum(p, dim=dimensions[1:])
+    return torch.sum(log_prob, dim=dimensions[1:])
 
 
 def gaussian_sample(mean, logs, temperature=1):
     # Sample from Gaussian with temperature
-    z = torch.normal(mean, torch.exp(logs) * temperature)
-
+    distribution = D.normal.Normal(mean, torch.exp(logs) * temperature)
+    z = distribution.sample(sample_shape=mean.shape)
     return z
 
 
@@ -205,17 +206,13 @@ class Conv2d(nn.Module):
         elif padding == "valid":
             padding = 0
 
+        self.padder = nn.ZeroPad2d(padding)
         self.conv = nn.Conv2d(
-            in_channels,
-            out_channels,
-            kernel_size,
-            stride,
-            padding,
-            bias=(not do_actnorm),
+            in_channels, out_channels, kernel_size, stride, bias=(not do_actnorm)
         )
 
         # init weight with std
-        self.conv.weight.data.normal_(mean=0.0, std=weight_std)
+        torch.nn.init.xavier_normal_(self.conv.weight)
 
         if not do_actnorm:
             self.conv.bias.data.zero_()
@@ -225,7 +222,8 @@ class Conv2d(nn.Module):
         self.do_actnorm = do_actnorm
 
     def forward(self, input):
-        x = self.conv(input)
+        x = self.padder(input)
+        x = self.conv(x)
         if self.do_actnorm:
             x, _ = self.actnorm(x)
         return x
@@ -248,7 +246,8 @@ class Conv2dZeros(nn.Module):
         elif padding == "valid":
             padding = 0
 
-        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding)
+        self.padder = nn.ZeroPad2d(padding)
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size, stride)
 
         self.conv.weight.data.zero_()
         self.conv.bias.data.zero_()
@@ -257,7 +256,8 @@ class Conv2dZeros(nn.Module):
         self.logs = nn.Parameter(torch.zeros(out_channels, 1, 1))
 
     def forward(self, input, **kwargs):
-        output = self.conv(input)
+        output = self.padder(input)
+        output = self.conv(output)
         return output * torch.exp(self.logs * self.logscale_factor)
 
 
