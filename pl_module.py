@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
-from data_utils import get_CIFAR10, get_RICH, postprocess
+from data_utils import get_CelebA, get_CIFAR10, get_RICH, postprocess
 from metrics import calculate_fid, calculate_roc_auc
 from models import (
     create_glow_model,
@@ -500,7 +500,13 @@ class NFModel(pl.LightningModule):
     def setup(self, stage: str):
         data_description = self.params["data"]
 
-        if data_description["name"].lower() == "cifar-10":
+        if data_description["name"].lower() == "celeba":
+            image_shape, num_classes, train_dataset, valid_dataset = get_CelebA(
+                data_description["augment"],
+                data_description["data_path"],
+                data_description["download"],
+            )
+        elif data_description["name"].lower() == "cifar-10":
             image_shape, num_classes, train_dataset, valid_dataset = get_CIFAR10(
                 data_description["augment"],
                 data_description["data_path"],

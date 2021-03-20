@@ -33,6 +33,40 @@ def postprocess(x):
     return torch.clamp(x, 0, 255).byte()
 
 
+def get_CelebA(augment, dataroot, download):
+    image_shape = (128, 128, 3)
+    num_classes = 40
+
+    test_transform = transforms.Compose([transforms.ToTensor(), preprocess])
+
+    if augment:
+        transformations = [
+            transforms.RandomHorizontalFlip(),
+        ]
+    else:
+        transformations = []
+
+    transformations.extend([transforms.ToTensor(), preprocess])
+    train_transform = transforms.Compose(transformations)
+
+    path = Path(dataroot) / "data" / "celeba"
+    train_dataset = datasets.CelebA(
+        path,
+        split="train",
+        transform=train_transform,
+        download=False,
+    )
+
+    test_dataset = datasets.CIFAR10(
+        path,
+        split="test",
+        transform=test_transform,
+        download=False,
+    )
+
+    return image_shape, num_classes, train_dataset, test_dataset
+
+
 def get_CIFAR10(augment, dataroot, download):
     image_shape = (32, 32, 3)
     num_classes = 10
@@ -41,7 +75,6 @@ def get_CIFAR10(augment, dataroot, download):
 
     if augment:
         transformations = [
-            transforms.RandomAffine(0, translate=(0.1, 0.1)),
             transforms.RandomHorizontalFlip(),
         ]
     else:
