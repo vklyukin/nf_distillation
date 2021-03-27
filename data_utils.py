@@ -57,7 +57,7 @@ def get_CelebA(augment, dataroot, download):
         download=False,
     )
 
-    test_dataset = datasets.CIFAR10(
+    test_dataset = datasets.CelebA(
         path,
         split="test",
         transform=test_transform,
