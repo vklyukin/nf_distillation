@@ -2,6 +2,7 @@ architecture: glow
 
 learning_rate: 0.0005
 optimizer: adam
+weight_decay: 0
 n_epochs: 1000
 batch_size: 128
 
@@ -9,14 +10,14 @@ inherit_p: false
 
 loss:
   nll:
-    weight: 0.99
+    weight: 1.0
   kd:
     name: mse
     weight: 0
   perceptual:
     name: l1
-    #    checkpoint: ./data/weights/vgg16-397923af.pth
-    weight: 0.01
+    checkpoint: /home/vdklyukin/nf_distillation/data/weights/vgg16-397923af.pth
+    weight: 0
 
 seed: 42
 
@@ -24,7 +25,7 @@ gpus: 1
 num_workers: 10
 
 fid_samples: 2048
-inception_checkpoint: ./data/weights/inception_v3.pth
+inception_checkpoint: /home/vdklyukin/nf_distillation/data/weights/inception_v3.pth
 
 to_test: false
 track_grad_norm: false

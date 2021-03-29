@@ -1,3 +1,4 @@
+import logging
 import math
 import torch
 import torch.nn as nn
@@ -6,6 +7,9 @@ import typing as tp
 from .flows import FlowNet, Glow, FlowStep
 from .layers import Split2d, gaussian_likelihood
 from .utils import uniform_binning_correction
+
+
+logger = logging.getLogger(__name__)
 
 
 class FlowNetGetAllOutputs(FlowNet):
@@ -100,6 +104,7 @@ class GlowGetAllOutputs(Glow):
             is_1d=is_1d,
         )
 
+        logger.info("Creating KD flow")
         self.flow = FlowNetGetAllOutputs(
             image_shape=image_shape,
             hidden_channels=hidden_channels,
@@ -149,6 +154,7 @@ class GlowGetAllOutputs(Glow):
 
 def create_glow_model(config: tp.Dict[str, tp.Any]) -> GlowGetAllOutputs:
     model = GlowGetAllOutputs(**config)
+    logger.info("Setting actnorm up")
     model.set_actnorm_init()
     return model
 

@@ -1,5 +1,5 @@
 data:
   name: cifar-10
-  data_path: ./data/
+  data_path: /home/vdklyukin/nf_distillation/data/
   download: true
   augment: true

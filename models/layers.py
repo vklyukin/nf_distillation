@@ -13,8 +13,8 @@ def gaussian_p(mean, logs, x):
             k = 1 (Independent)
             Var = logs ** 2
     """
-    distribution = D.normal.Normal(mean, torch.exp(logs))
-    return distribution.log_prob(x)
+    c = math.log(2 * math.pi)
+    return -0.5 * (logs * 2.0 + ((x - mean) ** 2) / torch.exp(logs * 2.0) + c)    
 
 
 def gaussian_likelihood(mean, logs, x):
@@ -25,8 +25,7 @@ def gaussian_likelihood(mean, logs, x):
 
 def gaussian_sample(mean, logs, temperature=1):
     # Sample from Gaussian with temperature
-    distribution = D.normal.Normal(mean, torch.exp(logs) * temperature)
-    z = distribution.sample(sample_shape=mean.shape)
+    z = torch.normal(mean, torch.exp(logs) * temperature)
     return z
 
 

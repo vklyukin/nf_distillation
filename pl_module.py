@@ -27,12 +27,19 @@ from models import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+
 class NFModel(pl.LightningModule):
     def __init__(self, config: tp.Dict[str, tp.Any]):
         super().__init__()
         self.params = config
+        
+        logger.info("Creating teacher")
         self.teacher = self.create_model(model_name="teacher")
+        logger.info("Creating student")
         self.student = self.create_model(model_name="student")
+        logger.info("Creating loss functions")
         (
             self.nll_weight,
             self.kd_loss,
@@ -41,10 +48,12 @@ class NFModel(pl.LightningModule):
             self.perceptual_weight,
         ) = self.create_loss_func()
 
+        logger.info("Creating fixed latent")
         if not self.params["student"].get("is_1d", False):
             mean, logs = self.student.prior(None, None)
             self.register_buffer("latent", gaussian_sample(mean, logs, 1))
 
+        logger.info("Getting indices for KD")
         self.student_kd_indices, self.teacher_kd_indices = self._get_kd_indices()
 
         if self.params["inherit_p"]:
@@ -61,9 +70,13 @@ class NFModel(pl.LightningModule):
                 self.teacher_kd_indices,
             )
 
+        logger.info("Setting seaborn settings")
         sns.set()
 
     def _get_kd_indices(self) -> tp.Tuple[tp.List, tp.List]:
+        if self.params["loss"]["kd"]["weight"] + self.params["loss"]["perceptual"]["weight"] == 0:
+            return [], []
+
         student_kd_indices = []
         for i, layer in enumerate(self.student.flow.layers):
             if isinstance(layer, SqueezeLayer):
@@ -95,16 +108,24 @@ class NFModel(pl.LightningModule):
 
         return model
 
-    def create_model(self, model_name) -> nn.Module:
+    def create_model(self, model_name) -> tp.Optional[nn.Module]:
         """Create model from config"""
+        if model_name == "teacher" and (
+            self.params["loss"]["kd"]["weight"] +\
+            self.params["loss"]["perceptual"]["weight"] == 0
+        ):
+            return None
+
         if self.params["architecture"].lower() == "glow":
             model_params = OmegaConf.to_container(self.params[model_name])
             del model_params["checkpoint"]
 
+            logger.info("Creating GLOW model")
             model = create_glow_model(model_params)
 
             checkpoint_path = self.params[model_name]["checkpoint"]
             if checkpoint_path:
+                logger.info("Loading checkpoint")
                 self.load_checkpoint(model, checkpoint_path)
 
             return model
@@ -255,7 +276,9 @@ class NFModel(pl.LightningModule):
     def configure_optimizers(self):
         if self.params["optimizer"] == "adam":
             optimizer = torch.optim.Adam(
-                self.student.parameters(), lr=self.params["learning_rate"]
+                self.student.parameters(), 
+                lr=self.params["learning_rate"], 
+                weight_decay=self.params["weight_decay"],
             )
         else:
             raise NameError("Unknown optimizer name")
@@ -385,12 +408,17 @@ class NFModel(pl.LightningModule):
             dataset = self.valid_dataset
 
         real_data_indices = np.random.choice(
-            dataset.data.shape[0], self.params["fid_samples"], replace=False
+            len(dataset), self.params["fid_samples"], replace=False
         )
-        real_data_for_fid = dataset.data[real_data_indices]
+        real_data_for_fid = postprocess(
+            torch.stack([
+                dataset[index][0] for index in real_data_indices
+            ])
+        ).cpu().numpy()
+        real_data_for_fid = np.transpose(real_data_for_fid, (0, 2, 3, 1))
 
         with torch.no_grad():
-            per_batch_samples = 1024  # hardcoded to prevent GPU OOM
+            per_batch_samples = 256  # hardcoded to prevent GPU OOM
 
             mean, logs = self.student.prior(torch.ones((per_batch_samples,)), None)
 
@@ -499,6 +527,7 @@ class NFModel(pl.LightningModule):
 
     def setup(self, stage: str):
         data_description = self.params["data"]
+        logger.info("Creating dataset")
 
         if data_description["name"].lower() == "celeba":
             image_shape, num_classes, train_dataset, valid_dataset = get_CelebA(
@@ -528,6 +557,7 @@ class NFModel(pl.LightningModule):
         self.num_classes = num_classes
 
     def train_dataloader(self):
+        logger.info("Creating train dataloader")
         return DataLoader(
             dataset=self.train_dataset,
             batch_size=self.params["batch_size"],
@@ -537,6 +567,7 @@ class NFModel(pl.LightningModule):
         )
 
     def val_dataloader(self):
+        logger.info("Creating val dataloader")
         return DataLoader(
             dataset=self.valid_dataset,
             batch_size=self.params["batch_size"],

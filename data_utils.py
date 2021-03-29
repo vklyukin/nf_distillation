@@ -34,17 +34,22 @@ def postprocess(x):
 
 
 def get_CelebA(augment, dataroot, download):
-    image_shape = (128, 128, 3)
+    image_shape = (64, 64, 3)
     num_classes = 40
 
-    test_transform = transforms.Compose([transforms.ToTensor(), preprocess])
+    test_transform = transforms.Compose([
+        transforms.Resize(image_shape[:-1]),
+        transforms.ToTensor(), 
+        preprocess
+    ])
 
     if augment:
         transformations = [
+            transforms.Resize(image_shape[:-1]),
             transforms.RandomHorizontalFlip(),
         ]
     else:
-        transformations = []
+        transformations = [transforms.Resize(image_shape[:-1]),]
 
     transformations.extend([transforms.ToTensor(), preprocess])
     train_transform = transforms.Compose(transformations)
@@ -54,14 +59,14 @@ def get_CelebA(augment, dataroot, download):
         path,
         split="train",
         transform=train_transform,
-        download=False,
+        download=download,
     )
 
-    test_dataset = datasets.CIFAR10(
+    test_dataset = datasets.CelebA(
         path,
-        split="test",
+        split="valid",
         transform=test_transform,
-        download=False,
+        download=download,
     )
 
     return image_shape, num_classes, train_dataset, test_dataset

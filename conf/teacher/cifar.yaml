@@ -14,4 +14,4 @@ teacher:
   y_classes: 10
   learn_top: false
   y_condition: false
-  checkpoint: ./data/weights/notop_teacher_0.pth
+  checkpoint: /home/vdklyukin/nf_distillation/data/weights/notop_teacher_0.pth

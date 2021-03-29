@@ -1,12 +1,12 @@
 student:
   is_1d: false
   image_shape:
-    - 128
-    - 128
+    - 64
+    - 64
     - 3
   hidden_channels: 512
   K: 32
-  L: 6
+  L: 4
   actnorm_scale: 1.0
   flow_permutation: invconv
   flow_coupling: additive

@@ -1,3 +1,4 @@
+import logging
 import math
 import torch
 import torch.nn as nn
@@ -18,7 +19,11 @@ from .layers import (
 from .utils import split_feature, uniform_binning_correction
 
 
+logger = logging.getLogger(__name__)
+
+
 def get_block_2d(in_channels, out_channels, hidden_channels):
+    logger.info("Creating 2D block")
     block = nn.Sequential(
         Conv2d(in_channels, hidden_channels),
         nn.ReLU(inplace=False),
@@ -30,6 +35,7 @@ def get_block_2d(in_channels, out_channels, hidden_channels):
 
 
 def get_block_1d(in_features, out_features, hidden_features):
+    logger.info("Creating 1D block")
     block = nn.Sequential(
         nn.Linear(in_features, hidden_features),
         nn.ReLU(inplace=False),
@@ -63,12 +69,14 @@ class FlowStep(nn.Module):
         self.flow_coupling = flow_coupling
         self.flow_permutation_type = flow_permutation
 
+        logger.info("Creating ActNorm")
         if self.is_1d:
             self.actnorm = ActNorm1d(in_channels, actnorm_scale)
         else:
             self.actnorm = ActNorm2d(in_channels, actnorm_scale)
 
         # 2. permute
+        logger.info("Creating permutation")
         if self.flow_permutation_type == "invconv":
             self.invconv = InvertibleConv1x1(
                 in_channels, LU_decomposed=LU_decomposed, is_1d=is_1d
@@ -86,6 +94,7 @@ class FlowStep(nn.Module):
             self.reverse = Permute2d(in_channels, shuffle=False)
 
         # 3. coupling
+        logger.info("Creating coupling")
         if flow_coupling == "additive":
             in_block_channels = in_channels // 2 + condition_features
             out_block_channels = in_channels - in_channels // 2
@@ -222,6 +231,7 @@ class FlowNet(nn.Module):
             C = image_shape[0]
 
         for i in range(L):
+            logger.info(f"Creating {i} block")
             # 1. Squeeze
             if not self.is_1d:
                 C, H, W = C * 4, H // 2, W // 2
@@ -230,7 +240,8 @@ class FlowNet(nn.Module):
                 self.output_shapes.append([-1, C, H, W])
 
             # 2. K FlowStep
-            for _ in range(K):
+            for j in range(K):
+                logger.info(f"Creating {j} Flowstep: {str([-1, C, H, W])}")
                 self.layers.append(
                     FlowStep(
                         in_channels=C,
@@ -251,6 +262,7 @@ class FlowNet(nn.Module):
 
             # 3. Split2d
             if i < L - 1 and not self.is_1d:
+                logger.info(f"Adding Split2d: {str([-1, C // 2, H, W])}")
                 self.layers.append(Split2d(num_channels=C))
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
@@ -299,6 +311,7 @@ class Glow(nn.Module):
         is_1d=False,
     ):
         super().__init__()
+        logger.info("Creating FlowNet")
         self.flow = FlowNet(
             image_shape=image_shape,
             hidden_channels=hidden_channels,
