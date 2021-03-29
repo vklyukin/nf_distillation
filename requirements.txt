@@ -1,7 +1,9 @@
-cv2
+catboost
+h5py
+opencv-python
 hydra-core
 neptune-client
-pytorch
+torch
 pytorch-lightning
 seaborn
 torchvision

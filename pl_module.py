@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
-from data_utils import get_CelebA, get_CIFAR10, get_RICH, postprocess
+import data.src as data_utils
 from metrics import calculate_fid, calculate_roc_auc
 from models import (
     create_glow_model,
@@ -181,7 +181,15 @@ class NFModel(pl.LightningModule):
 
     def forward(self, batch):
         """Return latent variables and student NLL"""
-        if "drop_weights" not in self.params["data"]:
+        if self.params["data"]["name"] in (
+            "bsds300",
+            "gas",
+            "hepmass",
+            "miniboone",
+            "power",
+        ):
+            x = batch[0]
+        elif "drop_weights" not in self.params["data"]:
             x, y = batch
         else:
             x, y, _ = batch
@@ -264,12 +272,20 @@ class NFModel(pl.LightningModule):
     def generate(self, batch):
         """Generate x from noise conditioning on batch"""
 
-        if "drop_weights" not in self.params["data"]:
+        if self.params["data"]["name"] in (
+            "bsds300",
+            "gas",
+            "hepmass",
+            "miniboone",
+            "power",
+        ):
+            condition = batch[0]
+        elif "drop_weights" not in self.params["data"]:
             _, condition = batch
         else:
             _, condition, _ = batch
 
-        if self.params["student"]["y_condition"]:
+        if self.params["student"]["is_1d"] or self.params["student"]["y_condition"]:
             generated = self.student(reverse=True, y_onehot=condition, temperature=1)[
                 -1
             ]
@@ -334,8 +350,10 @@ class NFModel(pl.LightningModule):
             "real": batch[0],
         }
 
-        if self.params["student"]["is_1d"]:
+        if self.params["student"]["is_1d"] and self.params["data"]["name"] == "rich":
             output["weights"] = batch[2]
+        elif self.params["student"]["is_1d"]:
+            output["weights"] = torch.ones((batch[0].size(0),))
 
         return output
 
@@ -381,7 +399,7 @@ class NFModel(pl.LightningModule):
             self.log("val_epoch_fid", metrics["epoch_fid"])
 
             self.sample_images()
-            self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
+            # self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
         else:
             generated = (
                 torch.cat([output["generated"] for output in outputs])
@@ -400,7 +418,7 @@ class NFModel(pl.LightningModule):
             )
 
             self.get_histograms(generated, real)
-            self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
+            # self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
 
             roc_auc = self.calc_roc_auc(generated, real, weights)
             self.log("val_epoch_roc_auc", roc_auc)
@@ -519,7 +537,7 @@ class NFModel(pl.LightningModule):
             shuffle=True,
         )
 
-        classifier = CatBoostClassifier(iterations=1000, task_type="GPU")
+        classifier = CatBoostClassifier(iterations=1000, task_type="CPU")
         classifier.fit(X_train, y_train)
         predicted = classifier.predict(X_test)
 
@@ -534,26 +552,65 @@ class NFModel(pl.LightningModule):
         data_description = self.params["data"]
         logger.info("Creating dataset")
 
-        if data_description["name"].lower() == "celeba":
-            image_shape, num_classes, train_dataset, valid_dataset = get_CelebA(
+        dataset_name = data_description["name"].lower()
+
+        if dataset_name == "celeba":
+            (
+                image_shape,
+                num_classes,
+                train_dataset,
+                valid_dataset,
+            ) = data_utils.get_CelebA(
                 data_description["augment"],
                 data_description["data_path"],
                 data_description["download"],
             )
-        elif data_description["name"].lower() == "cifar-10":
-            image_shape, num_classes, train_dataset, valid_dataset = get_CIFAR10(
+        elif dataset_name == "cifar-10":
+            (
+                image_shape,
+                num_classes,
+                train_dataset,
+                valid_dataset,
+            ) = data_utils.get_CIFAR10(
                 data_description["augment"],
                 data_description["data_path"],
                 data_description["download"],
             )
-        elif data_description["name"].lower() == "rich":
-            image_shape, num_classes, train_dataset, valid_dataset, scaler = get_RICH(
+        elif dataset_name == "rich":
+            (
+                image_shape,
+                num_classes,
+                train_dataset,
+                valid_dataset,
+                scaler,
+            ) = data_utils.get_RICH(
                 data_description["particle"],
                 data_description["drop_weights"],
                 data_description["data_path"],
                 data_description["download"],
             )
             self.scaler = scaler
+        elif dataset_name in (
+            "bsds300",
+            "gas",
+            "hepmass",
+            "miniboone",
+            "power",
+        ):
+            loaders = {
+                "bsds300": data_utils.get_BSDS300,
+                "gas": data_utils.get_GAS,
+                "hepmass": data_utils.get_HEPMASS,
+                "miniboone": data_utils.get_MINIBOONE,
+                "power": data_utils.get_POWER,
+            }
+            (image_shape, num_classes, train_dataset, valid_dataset,) = loaders[
+                dataset_name
+            ](
+                data_description["data_path"],
+            )
+        else:
+            raise NameError(f"Unknown dataset name: {dataset_name}")
 
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset

@@ -160,7 +160,10 @@ def create_glow_model(config: tp.Dict[str, tp.Any]) -> GlowGetAllOutputs:
 
 
 def inherit_permutation_matrix(
-    student, teacher, student_kd_indices, teacher_kd_indices,
+    student,
+    teacher,
+    student_kd_indices,
+    teacher_kd_indices,
 ):
     current_common_layer_index = 0
     current_permutation_matrix = None
