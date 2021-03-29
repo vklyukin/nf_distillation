@@ -13,7 +13,14 @@ def compute_same_pad(kernel_size, stride):
         kernel_size
     ), "Pass kernel size and stride both as int, or both as equal length iterable"
 
-    return [((k - 1) * s + 1) // 2 for k, s in zip(kernel_size, stride)]
+    two_side_paddings = [((k - 1) * s + 1) // 2 for k, s in zip(kernel_size, stride)]
+    four_side_paddings = []
+
+    for pad_size in two_side_paddings:
+        four_side_paddings.append(pad_size)
+        four_side_paddings.append(pad_size)
+
+    return four_side_paddings
 
 
 def uniform_binning_correction(x, n_bits=8):

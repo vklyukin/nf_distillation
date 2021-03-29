@@ -1,5 +1,5 @@
 data:
-  name: cifar-10
+  name: celeba
   data_path: /home/vdklyukin/nf_distillation/data/
-  download: true
+  download: false
   augment: true

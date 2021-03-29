@@ -147,3 +147,7 @@ data/
 lightning_logs/
 distillation/
 outputs/
+uptrain_teacher/
+
+# SLURM logs
+slurm*

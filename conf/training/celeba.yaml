@@ -2,9 +2,9 @@ architecture: glow
 
 learning_rate: 0.0005
 optimizer: adam
-weight_decay: 0
+weight_decay: 0.00005
 n_epochs: 1000
-batch_size: 128
+batch_size: 32
 
 inherit_p: false
 
@@ -34,5 +34,5 @@ neptune:
   project_name: vklyukin/norm-flows
   experiment_name: distillation
   tags:
-    - cifar10
-    - perceptual
+    - celeba
+    - teacher

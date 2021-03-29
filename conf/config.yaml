@@ -1,5 +1,5 @@
 defaults:
-  - dataset: cifar
-  - training: cifar
-  - teacher: cifar
-  - student: cifar
+  - dataset: celeba
+  - training: celeba
+  - teacher: celeba
+  - student: celeba

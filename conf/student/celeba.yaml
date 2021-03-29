@@ -1,17 +1,17 @@
-teacher:
+student:
   is_1d: false
   image_shape:
-    - 32
-    - 32
+    - 64
+    - 64
     - 3
   hidden_channels: 512
   K: 32
-  L: 3
+  L: 4
   actnorm_scale: 1.0
   flow_permutation: invconv
-  flow_coupling: affine
+  flow_coupling: additive
   LU_decomposed: true
-  y_classes: 10
+  y_classes: 1
   learn_top: false
   y_condition: false
-  checkpoint: /home/vdklyukin/nf_distillation/data/weights/notop_teacher_0.pth
+  checkpoint: false
