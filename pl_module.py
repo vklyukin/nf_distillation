@@ -34,7 +34,7 @@ class NFModel(pl.LightningModule):
     def __init__(self, config: tp.Dict[str, tp.Any]):
         super().__init__()
         self.params = config
-        
+
         logger.info("Creating teacher")
         self.teacher = self.create_model(model_name="teacher")
         logger.info("Creating student")
@@ -74,7 +74,11 @@ class NFModel(pl.LightningModule):
         sns.set()
 
     def _get_kd_indices(self) -> tp.Tuple[tp.List, tp.List]:
-        if self.params["loss"]["kd"]["weight"] + self.params["loss"]["perceptual"]["weight"] == 0:
+        if (
+            self.params["loss"]["kd"]["weight"]
+            + self.params["loss"]["perceptual"]["weight"]
+            == 0
+        ):
             return [], []
 
         student_kd_indices = []
@@ -111,8 +115,9 @@ class NFModel(pl.LightningModule):
     def create_model(self, model_name) -> tp.Optional[nn.Module]:
         """Create model from config"""
         if model_name == "teacher" and (
-            self.params["loss"]["kd"]["weight"] +\
-            self.params["loss"]["perceptual"]["weight"] == 0
+            self.params["loss"]["kd"]["weight"]
+            + self.params["loss"]["perceptual"]["weight"]
+            == 0
         ):
             return None
 
@@ -276,8 +281,8 @@ class NFModel(pl.LightningModule):
     def configure_optimizers(self):
         if self.params["optimizer"] == "adam":
             optimizer = torch.optim.Adam(
-                self.student.parameters(), 
-                lr=self.params["learning_rate"], 
+                self.student.parameters(),
+                lr=self.params["learning_rate"],
                 weight_decay=self.params["weight_decay"],
             )
         else:
@@ -410,11 +415,11 @@ class NFModel(pl.LightningModule):
         real_data_indices = np.random.choice(
             len(dataset), self.params["fid_samples"], replace=False
         )
-        real_data_for_fid = postprocess(
-            torch.stack([
-                dataset[index][0] for index in real_data_indices
-            ])
-        ).cpu().numpy()
+        real_data_for_fid = (
+            postprocess(torch.stack([dataset[index][0] for index in real_data_indices]))
+            .cpu()
+            .numpy()
+        )
         real_data_for_fid = np.transpose(real_data_for_fid, (0, 2, 3, 1))
 
         with torch.no_grad():
