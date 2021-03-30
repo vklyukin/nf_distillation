@@ -2,9 +2,9 @@ architecture: glow
 
 learning_rate: 0.0005
 optimizer: adam
-weight_decay: 0.00005
+weight_decay: 0
 n_epochs: 1000
-batch_size: 32
+batch_size: 16
 
 inherit_p: false
 
@@ -36,3 +36,4 @@ neptune:
   tags:
     - celeba
     - teacher
+    - grad_clipping
