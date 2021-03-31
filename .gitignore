@@ -141,7 +141,8 @@ cython_debug/
 .vscode/
 
 # data
-data/
+data/data
+data/weights
 
 # training logs
 lightning_logs/
