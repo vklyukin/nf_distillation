@@ -112,15 +112,11 @@ class FlowStep(nn.Module):
             out_block_channels = (in_channels - in_channels // 2) * 2
             if self.is_1d:
                 self.block = get_block_1d(
-                    in_block_channels,
-                    out_block_channels,
-                    hidden_channels,
+                    in_block_channels, out_block_channels, hidden_channels,
                 )
             else:
                 self.block = get_block_2d(
-                    in_block_channels,
-                    out_block_channels,
-                    hidden_channels,
+                    in_block_channels, out_block_channels, hidden_channels,
                 )
         else:
             raise NameError(f"Unknown coupling type: {flow_coupling}")
@@ -284,12 +280,7 @@ class FlowNet(nn.Module):
     def decode(self, z, y_onehot=None, temperature=None):
         for layer in reversed(self.layers):
             if isinstance(layer, Split2d):
-                z, logdet = layer(
-                    z,
-                    logdet=0,
-                    reverse=True,
-                    temperature=temperature,
-                )
+                z, logdet = layer(z, logdet=0, reverse=True, temperature=temperature,)
             else:
                 z, logdet = layer(z, y_onehot=y_onehot, logdet=0, reverse=True)
         return z
@@ -349,10 +340,7 @@ class Glow(nn.Module):
         self.register_buffer(
             "prior_h",
             torch.zeros(
-                [
-                    1,
-                    self.flow.output_shapes[-1][1] * 2,
-                ]
+                [1, self.flow.output_shapes[-1][1] * 2,]
                 + (
                     []
                     if self.is_1d
@@ -419,7 +407,7 @@ class Glow(nn.Module):
 
         # Full objective - converted to bits per dimension
         if self.is_1d:
-            bpd = (-objective) / (math.log(2.0) * c)
+            bpd = -objective
         else:
             bpd = (-objective) / (math.log(2.0) * c * h * w)
 

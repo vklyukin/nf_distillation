@@ -58,9 +58,7 @@ def get_POWER(dataroot):
     train, val, _ = load_data_normalised(path)
 
     train_dataset = TensorDataset(torch.from_numpy(train.astype(np.float32)))
-    val_dataset = TensorDataset(
-        torch.from_numpy(val.astype(np.float32)),
-    )
+    val_dataset = TensorDataset(torch.from_numpy(val.astype(np.float32)),)
 
     flow_shape = (train.shape[1],)
 

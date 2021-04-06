@@ -145,7 +145,7 @@ class GlowGetAllOutputs(Glow):
 
         # Full objective - converted to bits per dimension
         if self.is_1d:
-            bpd = (-objective) / (math.log(2.0) * c)
+            bpd = -objective
         else:
             bpd = (-objective) / (math.log(2.0) * c * h * w)
 
@@ -160,10 +160,7 @@ def create_glow_model(config: tp.Dict[str, tp.Any]) -> GlowGetAllOutputs:
 
 
 def inherit_permutation_matrix(
-    student,
-    teacher,
-    student_kd_indices,
-    teacher_kd_indices,
+    student, teacher, student_kd_indices, teacher_kd_indices,
 ):
     current_common_layer_index = 0
     current_permutation_matrix = None

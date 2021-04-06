@@ -2,13 +2,14 @@ import numpy as np
 import os
 import pandas as pd
 import torch
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler, QuantileTransformer, StandardScaler
 from time import time
 from torch.utils.data import TensorDataset
 
 
-data_dir = "/data/vnkljukin/nf/data_calibsample/"
+data_dir = "/home/vdklyukin/nf_distillation/data/data/data_calibsample/"
 
 
 class RICHDataProvider:

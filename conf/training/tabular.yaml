@@ -3,8 +3,8 @@ architecture: glow
 learning_rate: 0.0005
 optimizer: adam
 weight_decay: 0.
-n_epochs: 100
-batch_size: 16384
+n_epochs: 60000
+batch_size: 262144
 
 inherit_p: false
 
@@ -22,7 +22,9 @@ seed: 42
 
 gpus: 1
 num_workers: 4
+
 fid_samples: -1
+roc_auc: false
 
 to_test: false
 track_grad_norm: false
@@ -32,3 +34,5 @@ neptune:
   experiment_name: tabular
   tags:
     - tabular
+    - teacher
+    - miniboone

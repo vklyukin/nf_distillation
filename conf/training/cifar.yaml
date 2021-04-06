@@ -29,6 +29,7 @@ inception_checkpoint: /home/vdklyukin/nf_distillation/data/weights/inception_v3.
 
 to_test: false
 track_grad_norm: false
+roc_auc: false
 
 neptune:
   project_name: vklyukin/norm-flows

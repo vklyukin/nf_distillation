@@ -12,4 +12,4 @@ teacher:
   y_classes: 3
   learn_top: false
   y_condition: true
-  checkpoint: /home/vnkljukin/nf/nf_distillation/outputs/2021-01-21/14-55-01/tabular/NF-180/checkpoints/epoch=838-step=103196.ckpt
+  checkpoint: /home/vdklyukin/nf_distillation/data/weights/NF-180/checkpoints/epoch=838-step=103196.ckpt

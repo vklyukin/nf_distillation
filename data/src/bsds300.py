@@ -9,12 +9,13 @@ def get_BSDS300(dataroot):
     path = Path(dataroot) / "data" / "BSDS300" / "BSDS300.hdf5"
 
     data = h5py.File(path)
-    train, val = data["train"].astype(np.float32), data["validation"].astype(np.float32)
+    train, val = (
+        data["train"][:].astype(np.float32),
+        data["validation"][:].astype(np.float32),
+    )
 
     train_dataset = TensorDataset(torch.from_numpy(train))
-    val_dataset = TensorDataset(
-        torch.from_numpy(val),
-    )
+    val_dataset = TensorDataset(torch.from_numpy(val),)
 
     flow_shape = (train.shape[1],)
 

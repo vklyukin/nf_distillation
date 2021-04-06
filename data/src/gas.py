@@ -18,7 +18,7 @@ def load_data(file):
 def get_correlation_numbers(data):
     C = data.corr()
     A = C > 0.98
-    B = A.as_matrix().sum(axis=1)
+    B = A.values.sum(axis=1)
     return B
 
 
@@ -32,7 +32,6 @@ def load_data_and_clean(file):
         col_name = data.columns[col_to_remove]
         data.drop(col_name, axis=1, inplace=True)
         B = get_correlation_numbers(data)
-    # print(data.corr())
     data = (data - data.mean()) / data.std()
 
     return data
@@ -40,7 +39,7 @@ def load_data_and_clean(file):
 
 def load_data_and_clean_and_split(file):
 
-    data = load_data_and_clean(file).as_matrix()
+    data = load_data_and_clean(file).values
     N_test = int(0.1 * data.shape[0])
     data_test = data[-N_test:]
     data_train = data[0:-N_test]
@@ -57,9 +56,7 @@ def get_GAS(dataroot):
     train, val, _ = load_data_and_clean_and_split(path)
 
     train_dataset = TensorDataset(torch.from_numpy(train.astype(np.float32)))
-    val_dataset = TensorDataset(
-        torch.from_numpy(val.astype(np.float32)),
-    )
+    val_dataset = TensorDataset(torch.from_numpy(val.astype(np.float32)),)
 
     flow_shape = (train.shape[1],)
 

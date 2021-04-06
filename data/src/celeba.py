@@ -29,17 +29,11 @@ def get_CelebA(augment, dataroot, download):
 
     path = Path(dataroot) / "data" / "celeba"
     train_dataset = datasets.CelebA(
-        path,
-        split="train",
-        transform=train_transform,
-        download=download,
+        path, split="train", transform=train_transform, download=download,
     )
 
     test_dataset = datasets.CelebA(
-        path,
-        split="valid",
-        transform=test_transform,
-        download=download,
+        path, split="valid", transform=test_transform, download=download,
     )
 
     return image_shape, num_classes, train_dataset, test_dataset

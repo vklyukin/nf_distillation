@@ -1,5 +1,5 @@
 defaults:
-  - dataset: power
+  - dataset: miniboone
   - training: tabular
-  - teacher: power
-  - student: power
+  - teacher: miniboone
+  - student: miniboone

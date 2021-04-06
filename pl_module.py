@@ -82,13 +82,24 @@ class NFModel(pl.LightningModule):
             return [], []
 
         student_kd_indices = []
+        multiplier_1d = 2
         for i, layer in enumerate(self.student.flow.layers):
-            if isinstance(layer, SqueezeLayer):
+            if (
+                isinstance(layer, SqueezeLayer)
+                or self.params["student"]["is_1d"]
+                and (i + 1) % multiplier_1d == 0
+                or i + 1 == len(self.student.flow.layers)
+            ):
                 student_kd_indices.append(i)
 
         teacher_kd_indices = []
         for i, layer in enumerate(self.teacher.flow.layers):
-            if isinstance(layer, SqueezeLayer):
+            if (
+                isinstance(layer, SqueezeLayer)
+                or self.params["student"]["is_1d"]
+                and (i + 1) % (2 * multiplier_1d) == 0
+                or i + 1 == len(self.teacher.flow.layers)
+            ):
                 teacher_kd_indices.append(i)
 
         return student_kd_indices, teacher_kd_indices
@@ -256,6 +267,10 @@ class NFModel(pl.LightningModule):
                     student_z[student_layer_id], teacher_z[teacher_layer_id]
                 )
 
+            kd_loss_value /= (
+                len(self.student_kd_indices) if self.student_kd_indices else 1
+            )
+
         if self.perceptual_weight > 0:
             student_x = model_outputs["student_x"]
             teacher_x = model_outputs["teacher_x"]
@@ -399,7 +414,7 @@ class NFModel(pl.LightningModule):
             self.log("val_epoch_fid", metrics["epoch_fid"])
 
             self.sample_images()
-            # self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
+            self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
         else:
             generated = (
                 torch.cat([output["generated"] for output in outputs])
@@ -418,10 +433,11 @@ class NFModel(pl.LightningModule):
             )
 
             self.get_histograms(generated, real)
-            # self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
+            self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
 
-            roc_auc = self.calc_roc_auc(generated, real, weights)
-            self.log("val_epoch_roc_auc", roc_auc)
+            if self.params["roc_auc"]:
+                roc_auc = self.calc_roc_auc(generated, real, weights)
+                self.log("val_epoch_roc_auc", roc_auc)
 
     @torch.no_grad()
     def calc_fid(self, fid_mode) -> float:
@@ -434,7 +450,9 @@ class NFModel(pl.LightningModule):
             len(dataset), self.params["fid_samples"], replace=False
         )
         real_data_for_fid = (
-            postprocess(torch.stack([dataset[index][0] for index in real_data_indices]))
+            data_utils.postprocess(
+                torch.stack([dataset[index][0] for index in real_data_indices])
+            )
             .cpu()
             .numpy()
         )
@@ -446,7 +464,7 @@ class NFModel(pl.LightningModule):
             mean, logs = self.student.prior(torch.ones((per_batch_samples,)), None)
 
             gen_data_for_fid = [
-                postprocess(
+                data_utils.postprocess(
                     self.student(
                         z=gaussian_sample(mean, logs, 1), temperature=1, reverse=True
                     )[-1]
@@ -473,7 +491,7 @@ class NFModel(pl.LightningModule):
     @torch.no_grad()
     def sample_images(self):
         student_samples = self.student(reverse=True, z=self.latent, temperature=1)[-1]
-        images = postprocess(student_samples).cpu()
+        images = data_utils.postprocess(student_samples).cpu()
         grid = make_grid(images[:30], nrow=6).permute(1, 2, 0)
 
         plt.figure(figsize=(10, 10))
@@ -537,7 +555,7 @@ class NFModel(pl.LightningModule):
             shuffle=True,
         )
 
-        classifier = CatBoostClassifier(iterations=1000, task_type="CPU")
+        classifier = CatBoostClassifier(iterations=1000, task_type="CPU", silent=True)
         classifier.fit(X_train, y_train)
         predicted = classifier.predict(X_test)
 
@@ -590,13 +608,7 @@ class NFModel(pl.LightningModule):
                 data_description["download"],
             )
             self.scaler = scaler
-        elif dataset_name in (
-            "bsds300",
-            "gas",
-            "hepmass",
-            "miniboone",
-            "power",
-        ):
+        elif dataset_name in ("bsds300", "gas", "hepmass", "miniboone", "power",):
             loaders = {
                 "bsds300": data_utils.get_BSDS300,
                 "gas": data_utils.get_GAS,
@@ -606,14 +618,15 @@ class NFModel(pl.LightningModule):
             }
             (image_shape, num_classes, train_dataset, valid_dataset,) = loaders[
                 dataset_name
-            ](
-                data_description["data_path"],
-            )
+            ](data_description["data_path"],)
         else:
             raise NameError(f"Unknown dataset name: {dataset_name}")
 
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
+
+        logger.info(f"Train size: {len(train_dataset)}")
+        logger.info(f"Val size: {len(valid_dataset)}")
 
         self.image_shape = image_shape
         self.num_classes = num_classes
