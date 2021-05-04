@@ -9,7 +9,7 @@ from time import time
 from torch.utils.data import TensorDataset
 
 
-data_dir = "/home/vdklyukin/nf_distillation/data/data/data_calibsample/"
+data_dir = "/home/vdkljukin/nf_distillation/data/data/data_calibsample/"
 
 
 class RICHDataProvider:

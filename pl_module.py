@@ -87,7 +87,7 @@ class NFModel(pl.LightningModule):
             return [], []
 
         student_kd_indices = []
-        multiplier_1d = 2
+        multiplier_1d = 4
         for i, layer in enumerate(self.student.flow.layers):
             if (
                 isinstance(layer, SqueezeLayer)
@@ -588,7 +588,7 @@ class NFModel(pl.LightningModule):
             shuffle=True,
         )
 
-        classifier = CatBoostClassifier(iterations=1000, task_type="CPU", silent=True)
+        classifier = CatBoostClassifier(iterations=1000, task_type="CPU", thread_count=10, silent=True)
         classifier.fit(X_train, y_train)
         predicted = classifier.predict(X_test)
 
