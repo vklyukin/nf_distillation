@@ -250,7 +250,6 @@ def load_images(path):
     image_paths = []
     image_extensions = ["png", "jpg"]
     for ext in image_extensions:
-        print("Looking for images in", os.path.join(path, "*.{}".format(ext)))
         for impath in glob.glob(os.path.join(path, "*.{}".format(ext))):
             image_paths.append(impath)
     first_image = cv2.imread(image_paths[0])

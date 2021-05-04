@@ -1,16 +1,16 @@
 architecture: glow
 
-learning_rate: 0.0005
-optimizer: adam
-weight_decay: 0
+learning_rate: 0.001
+optimizer: adamax
+weight_decay: 0.
 n_epochs: 1000
-batch_size: 16
+batch_size: 64
 
 inherit_p: false
 
 loss:
   nll:
-    weight: 1.0
+    weight: 1.
   kd:
     name: mse
     weight: 0
@@ -29,11 +29,12 @@ inception_checkpoint: /home/vdklyukin/nf_distillation/data/weights/inception_v3.
 
 to_test: false
 track_grad_norm: false
+roc_auc: false
 
 neptune:
   project_name: vklyukin/norm-flows
   experiment_name: distillation
   tags:
     - celeba
-    - teacher
-    - grad_clipping
+    - student
+    - 8_bits

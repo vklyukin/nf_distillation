@@ -68,6 +68,7 @@ class FlowStep(nn.Module):
         self.is_1d = is_1d
         self.flow_coupling = flow_coupling
         self.flow_permutation_type = flow_permutation
+        self.condition_features = condition_features
 
         logger.info("Creating ActNorm")
         if self.is_1d:
@@ -169,7 +170,7 @@ class FlowStep(nn.Module):
         # 1.coupling
         z1, z2 = split_feature(input, "split")
 
-        if y_onehot is not None:
+        if self.condition_features:
             coupling_argument = torch.cat((z1, y_onehot), dim=1)
         else:
             coupling_argument = z1
@@ -237,7 +238,7 @@ class FlowNet(nn.Module):
 
             # 2. K FlowStep
             for j in range(K):
-                logger.info(f"Creating {j} Flowstep: {str([-1, C, H, W])}")
+                logger.info(f"Creating {j} Flowstep")
                 self.layers.append(
                     FlowStep(
                         in_channels=C,
@@ -258,7 +259,7 @@ class FlowNet(nn.Module):
 
             # 3. Split2d
             if i < L - 1 and not self.is_1d:
-                logger.info(f"Adding Split2d: {str([-1, C // 2, H, W])}")
+                logger.info(f"Adding Split2d")
                 self.layers.append(Split2d(num_channels=C))
                 self.output_shapes.append([-1, C // 2, H, W])
                 C = C // 2
@@ -406,7 +407,7 @@ class Glow(nn.Module):
 
         # Full objective - converted to bits per dimension
         if self.is_1d:
-            bpd = (-objective) / (math.log(2.0) * c)
+            bpd = -objective
         else:
             bpd = (-objective) / (math.log(2.0) * c * h * w)
 

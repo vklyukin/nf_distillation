@@ -1,12 +1,15 @@
+import numpy as np
+import os
+import pandas as pd
+import torch
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import RobustScaler, QuantileTransformer, StandardScaler
-import numpy as np
-import pandas as pd
-import os
 from time import time
+from torch.utils.data import TensorDataset
 
-data_dir = "/data/vnkljukin/nf/data_calibsample/"
-# data_dir = "data/data/data_calibsample/"
+
+data_dir = "/home/vdkljukin/nf_distillation/data/data/data_calibsample/"
 
 
 class RICHDataProvider:
@@ -160,3 +163,44 @@ class RICHDataProvider:
             data_train = data_train.astype(dtype, copy=False)
             data_val = data_val.astype(dtype, copy=False)
         return data_train, data_val, scaler
+
+
+def get_RICH(particle, drop_weights, dataroot, download):
+    flow_shape = (5,)
+
+    # TODO: rewrite rich utils to make it use given path
+    path = Path(dataroot) / "data" / "data_calibsample"
+    # TODO: download dataset if needed
+
+    train_data, test_data, scaler = RICHDataProvider().get_merged_typed_dataset(
+        particle, dtype=np.float32, log=True
+    )
+
+    condition_columns = ["Brunel_P", "Brunel_ETA", "nTracks_Brunel"]
+    flow_columns = ["RichDLLe", "RichDLLk", "RichDLLmu", "RichDLLp", "RichDLLbt"]
+    weight_column = "probe_sWeight"
+
+    if drop_weights:
+        train_dataset = TensorDataset(
+            torch.from_numpy(train_data[flow_columns].values),
+            torch.from_numpy(train_data[condition_columns].values),
+            torch.from_numpy(train_data[weight_column].values),
+        )
+        test_dataset = TensorDataset(
+            torch.from_numpy(test_data[flow_columns].values),
+            torch.from_numpy(test_data[condition_columns].values),
+            torch.from_numpy(test_data[weight_column].values),
+        )
+    else:
+        train_dataset = TensorDataset(
+            torch.from_numpy(train_data[flow_columns].values),
+            torch.from_numpy(train_data[condition_columns].values),
+            torch.from_numpy(train_data[weight_column].values),
+        )
+        test_dataset = TensorDataset(
+            torch.from_numpy(test_data[flow_columns].values),
+            torch.from_numpy(test_data[condition_columns].values),
+            torch.from_numpy(test_data[weight_column].values),
+        )
+
+    return flow_shape, len(condition_columns), train_dataset, test_dataset, scaler

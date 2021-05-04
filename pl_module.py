@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
-from data_utils import get_CelebA, get_CIFAR10, get_RICH, postprocess
+import data.src as data_utils
 from metrics import calculate_fid, calculate_roc_auc
 from models import (
     create_glow_model,
@@ -52,6 +52,11 @@ class NFModel(pl.LightningModule):
         if not self.params["student"].get("is_1d", False):
             mean, logs = self.student.prior(None, None)
             self.register_buffer("latent", gaussian_sample(mean, logs, 1))
+            self.register_buffer("latent_0_7", gaussian_sample(mean, logs, 0.7))
+            self.latents = {
+                1.0: self.latent.to("cuda"),
+                0.7: self.latent_0_7.to("cuda"),
+            }
 
         logger.info("Getting indices for KD")
         self.student_kd_indices, self.teacher_kd_indices = self._get_kd_indices()
@@ -82,13 +87,24 @@ class NFModel(pl.LightningModule):
             return [], []
 
         student_kd_indices = []
+        multiplier_1d = 4
         for i, layer in enumerate(self.student.flow.layers):
-            if isinstance(layer, SqueezeLayer):
+            if (
+                isinstance(layer, SqueezeLayer)
+                or self.params["student"]["is_1d"]
+                and (i + 1) % multiplier_1d == 0
+                or i + 1 == len(self.student.flow.layers)
+            ):
                 student_kd_indices.append(i)
 
         teacher_kd_indices = []
         for i, layer in enumerate(self.teacher.flow.layers):
-            if isinstance(layer, SqueezeLayer):
+            if (
+                isinstance(layer, SqueezeLayer)
+                or self.params["student"]["is_1d"]
+                and (i + 1) % (2 * multiplier_1d) == 0
+                or i + 1 == len(self.teacher.flow.layers)
+            ):
                 teacher_kd_indices.append(i)
 
         return student_kd_indices, teacher_kd_indices
@@ -152,7 +168,7 @@ class NFModel(pl.LightningModule):
         perceptual_weight = perceptual_loss_description["weight"]
 
         if kd_loss_description["name"].lower() == "mse":
-            kd_loss = nn.MSELoss(reduction="mean")
+            kd_loss = nn.MSELoss(reduction="none")
         else:
             raise NameError(
                 "Unkown KD loss name: {}".format(kd_loss_description["name"])
@@ -163,7 +179,7 @@ class NFModel(pl.LightningModule):
                 resize=True, checkpoint_path=perceptual_loss_description["checkpoint"]
             )
         elif perceptual_loss_description["name"].lower() == "l1":
-            perceptual_loss = nn.L1Loss()
+            perceptual_loss = nn.L1Loss(reduction="none")
         else:
             raise NameError(
                 "Unkown perceptual loss name: {}".format(
@@ -181,10 +197,20 @@ class NFModel(pl.LightningModule):
 
     def forward(self, batch):
         """Return latent variables and student NLL"""
-        if "drop_weights" not in self.params["data"]:
+        if self.params["data"]["name"] in (
+            "bsds300",
+            "gas",
+            "hepmass",
+            "miniboone",
+            "power",
+        ):
+            x = batch[0]
+            weights = None
+        elif "drop_weights" not in self.params["data"]:
             x, y = batch
+            weights = None
         else:
-            x, y, _ = batch
+            x, y, weights = batch
 
         if self.params["student"]["y_condition"]:
             student_z, student_nll, _ = self.student(x, y)
@@ -205,21 +231,9 @@ class NFModel(pl.LightningModule):
             mean, logs = self.student.prior(None, y_onehot=y_onehot)
             latent = gaussian_sample(mean, logs, 1)
 
-            student_x = (
-                torch.clamp(
-                    self.student(z=latent, temperature=1, reverse=True)[-1], -0.5, 0.5
-                )
-                + 0.5
-            )
+            student_x = self.student(z=latent, temperature=1, reverse=True)[-1]
             with torch.no_grad():
-                teacher_x = (
-                    torch.clamp(
-                        self.teacher(z=latent, temperature=1, reverse=True)[-1],
-                        -0.5,
-                        0.5,
-                    )
-                    + 0.5
-                )
+                teacher_x = self.teacher(z=latent, temperature=1, reverse=True)[-1]
         else:
             student_x = None
             teacher_x = None
@@ -230,12 +244,13 @@ class NFModel(pl.LightningModule):
             "teacher_z": teacher_z,
             "student_x": student_x,
             "teacher_x": teacher_x,
+            "weights": weights,
         }
 
     def loss(self, model_outputs, *args):
         """Count loss function value"""
-        kd_loss_value = torch.tensor(0.0, device=self.device)
-        perceptual_loss_value = torch.tensor(0.0, device=self.device)
+        kd_loss_value = None
+        perceptual_loss_value = None
 
         if self.kd_weight > 0:
             student_z = model_outputs["student_z"]
@@ -244,32 +259,74 @@ class NFModel(pl.LightningModule):
             for student_layer_id, teacher_layer_id in zip(
                 self.student_kd_indices, self.teacher_kd_indices
             ):
-                kd_loss_value += self.kd_loss(
+                partial_kd_loss = self.kd_loss(
                     student_z[student_layer_id], teacher_z[teacher_layer_id]
                 )
+                partial_kd_loss = partial_kd_loss.mean(
+                    dim=list(range(len(partial_kd_loss.shape)))[1:]
+                )
+                if kd_loss_value is not None:
+                    kd_loss_value += partial_kd_loss
+                else:
+                    kd_loss_value = partial_kd_loss
+
+            kd_loss_value /= (
+                len(self.student_kd_indices) if self.student_kd_indices else 1
+            )
 
         if self.perceptual_weight > 0:
             student_x = model_outputs["student_x"]
             teacher_x = model_outputs["teacher_x"]
 
-            perceptual_loss_value += self.perceptual_loss(student_x, teacher_x)
+            partial_perceptual_loss = self.perceptual_loss(student_x, teacher_x)
+            partial_perceptual_loss = partial_perceptual_loss.mean(
+                dim=list(range(len(partial_perceptual_loss.shape)))[1:]
+            )
+
+            if perceptual_loss_value is not None:
+                perceptual_loss_value += partial_perceptual_loss
+            else:
+                perceptual_loss_value = partial_perceptual_loss
+
+        if kd_loss_value is None:
+            kd_loss_value = torch.tensor(0.0, device=self.device)
+        if perceptual_loss_value is None:
+            perceptual_loss_value = torch.tensor(0.0, device=self.device)
+
+        result_loss = (
+            self.nll_weight * model_outputs["student_nll"].mean()
+            + self.kd_weight * kd_loss_value.mean()
+            + self.perceptual_weight * perceptual_loss_value.mean()
+        )
+
+        if model_outputs["weights"] is not None:
+            result_loss *= model_outputs["weights"]
 
         return {
             "nll": model_outputs["student_nll"].mean(),
-            "kd": kd_loss_value,
-            "perceptual": perceptual_loss_value,
+            "kd": kd_loss_value.mean(),
+            "perceptual": perceptual_loss_value.mean(),
+            "result_loss": result_loss,
         }
 
     @torch.no_grad()
     def generate(self, batch):
         """Generate x from noise conditioning on batch"""
 
-        if "drop_weights" not in self.params["data"]:
+        if self.params["data"]["name"] in (
+            "bsds300",
+            "gas",
+            "hepmass",
+            "miniboone",
+            "power",
+        ):
+            condition = batch[0]
+        elif "drop_weights" not in self.params["data"]:
             _, condition = batch
         else:
             _, condition, _ = batch
 
-        if self.params["student"]["y_condition"]:
+        if self.params["student"]["is_1d"] or self.params["student"]["y_condition"]:
             generated = self.student(reverse=True, y_onehot=condition, temperature=1)[
                 -1
             ]
@@ -281,6 +338,12 @@ class NFModel(pl.LightningModule):
     def configure_optimizers(self):
         if self.params["optimizer"] == "adam":
             optimizer = torch.optim.Adam(
+                self.student.parameters(),
+                lr=self.params["learning_rate"],
+                weight_decay=self.params["weight_decay"],
+            )
+        elif self.params["optimizer"] == "adamax":
+            optimizer = torch.optim.Adamax(
                 self.student.parameters(),
                 lr=self.params["learning_rate"],
                 weight_decay=self.params["weight_decay"],
@@ -297,20 +360,15 @@ class NFModel(pl.LightningModule):
         self.log("train_batch_nll", train_losses["nll"], on_step=True)
         self.log("train_batch_kd", train_losses["kd"], on_step=True)
         self.log("train_batch_perceptual", train_losses["perceptual"], on_step=True)
-
-        result_loss = (
-            self.nll_weight * train_losses["nll"]
-            + self.kd_weight * train_losses["kd"]
-            + self.perceptual_weight * train_losses["perceptual"]
+        self.log(
+            "train_batch_loss", train_losses["result_loss"], on_step=True, prog_bar=True
         )
-
-        self.log("train_batch_loss", result_loss, on_step=True, prog_bar=True)
 
         return {
             "nll": train_losses["nll"],
             "kd": train_losses["kd"],
             "perceptual": train_losses["perceptual"],
-            "loss": result_loss,
+            "loss": train_losses["result_loss"],
         }
 
     @torch.no_grad()
@@ -334,8 +392,10 @@ class NFModel(pl.LightningModule):
             "real": batch[0],
         }
 
-        if self.params["student"]["is_1d"]:
+        if self.params["student"]["is_1d"] and self.params["data"]["name"] == "rich":
             output["weights"] = batch[2]
+        elif self.params["student"]["is_1d"]:
+            output["weights"] = torch.ones((batch[0].size(0),))
 
         return output
 
@@ -380,8 +440,10 @@ class NFModel(pl.LightningModule):
         if not self.params["student"].get("is_1d", False):
             self.log("val_epoch_fid", metrics["epoch_fid"])
 
-            self.sample_images()
-            self.trainer.logger.experiment.log_image("samples.png", x=plt.gcf())
+            self.sample_images(temperature=1.0)
+            self.trainer.logger.experiment.log_image("samples_t_1.png", x=plt.gcf())
+            self.sample_images(temperature=0.7)
+            self.trainer.logger.experiment.log_image("samples_t_0_7.png", x=plt.gcf())
         else:
             generated = (
                 torch.cat([output["generated"] for output in outputs])
@@ -399,11 +461,13 @@ class NFModel(pl.LightningModule):
                 .numpy()
             )
 
-            self.get_histograms(generated, real)
-            self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
+            if self.params["data"]["name"] == "rich":
+                self.get_histograms(generated, real)
+                self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
 
-            roc_auc = self.calc_roc_auc(generated, real, weights)
-            self.log("val_epoch_roc_auc", roc_auc)
+            if self.params["roc_auc"]:
+                roc_auc = self.calc_roc_auc(generated, real, weights)
+                self.log("val_epoch_roc_auc", roc_auc)
 
     @torch.no_grad()
     def calc_fid(self, fid_mode) -> float:
@@ -416,7 +480,9 @@ class NFModel(pl.LightningModule):
             len(dataset), self.params["fid_samples"], replace=False
         )
         real_data_for_fid = (
-            postprocess(torch.stack([dataset[index][0] for index in real_data_indices]))
+            data_utils.postprocess(
+                torch.stack([dataset[index][0] for index in real_data_indices])
+            )
             .cpu()
             .numpy()
         )
@@ -428,7 +494,7 @@ class NFModel(pl.LightningModule):
             mean, logs = self.student.prior(torch.ones((per_batch_samples,)), None)
 
             gen_data_for_fid = [
-                postprocess(
+                data_utils.postprocess(
                     self.student(
                         z=gaussian_sample(mean, logs, 1), temperature=1, reverse=True
                     )[-1]
@@ -453,9 +519,12 @@ class NFModel(pl.LightningModule):
         return fid_score
 
     @torch.no_grad()
-    def sample_images(self):
-        student_samples = self.student(reverse=True, z=self.latent, temperature=1)[-1]
-        images = postprocess(student_samples).cpu()
+    def sample_images(self, temperature=1):
+        latent = self.latents[temperature]
+        student_samples = self.student(reverse=True, z=latent, temperature=temperature)[
+            -1
+        ]
+        images = data_utils.postprocess(student_samples).cpu()
         grid = make_grid(images[:30], nrow=6).permute(1, 2, 0)
 
         plt.figure(figsize=(10, 10))
@@ -519,7 +588,7 @@ class NFModel(pl.LightningModule):
             shuffle=True,
         )
 
-        classifier = CatBoostClassifier(iterations=1000, task_type="GPU")
+        classifier = CatBoostClassifier(iterations=1000, task_type="CPU", thread_count=10, silent=True)
         classifier.fit(X_train, y_train)
         predicted = classifier.predict(X_test)
 
@@ -534,29 +603,63 @@ class NFModel(pl.LightningModule):
         data_description = self.params["data"]
         logger.info("Creating dataset")
 
-        if data_description["name"].lower() == "celeba":
-            image_shape, num_classes, train_dataset, valid_dataset = get_CelebA(
+        dataset_name = data_description["name"].lower()
+
+        if dataset_name == "celeba":
+            (
+                image_shape,
+                num_classes,
+                train_dataset,
+                valid_dataset,
+            ) = data_utils.get_CelebA(
                 data_description["augment"],
                 data_description["data_path"],
                 data_description["download"],
             )
-        elif data_description["name"].lower() == "cifar-10":
-            image_shape, num_classes, train_dataset, valid_dataset = get_CIFAR10(
+        elif dataset_name == "cifar-10":
+            (
+                image_shape,
+                num_classes,
+                train_dataset,
+                valid_dataset,
+            ) = data_utils.get_CIFAR10(
                 data_description["augment"],
                 data_description["data_path"],
                 data_description["download"],
             )
-        elif data_description["name"].lower() == "rich":
-            image_shape, num_classes, train_dataset, valid_dataset, scaler = get_RICH(
+        elif dataset_name == "rich":
+            (
+                image_shape,
+                num_classes,
+                train_dataset,
+                valid_dataset,
+                scaler,
+            ) = data_utils.get_RICH(
                 data_description["particle"],
                 data_description["drop_weights"],
                 data_description["data_path"],
                 data_description["download"],
             )
             self.scaler = scaler
+        elif dataset_name in ("bsds300", "gas", "hepmass", "miniboone", "power",):
+            loaders = {
+                "bsds300": data_utils.get_BSDS300,
+                "gas": data_utils.get_GAS,
+                "hepmass": data_utils.get_HEPMASS,
+                "miniboone": data_utils.get_MINIBOONE,
+                "power": data_utils.get_POWER,
+            }
+            (image_shape, num_classes, train_dataset, valid_dataset,) = loaders[
+                dataset_name
+            ](data_description["data_path"],)
+        else:
+            raise NameError(f"Unknown dataset name: {dataset_name}")
 
         self.train_dataset = train_dataset
         self.valid_dataset = valid_dataset
+
+        logger.info(f"Train size: {len(train_dataset)}")
+        logger.info(f"Val size: {len(valid_dataset)}")
 
         self.image_shape = image_shape
         self.num_classes = num_classes

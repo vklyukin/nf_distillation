@@ -1,39 +1,40 @@
 architecture: glow
 
 learning_rate: 0.0005
-weight_decay: 0.
 optimizer: adam
-n_epochs: 1000
-batch_size: 16384
+weight_decay: 0.
+n_epochs: 10000
+batch_size: 65536
 
 inherit_p: false
 
 loss:
   nll:
-    weight: 0.95
+    weight: 0.85
   kd:
     name: mse
     weight: 0.05
   perceptual:
     name: l1
-    weight: 0.
+    weight: 0.1
 
 seed: 42
 
 gpus: 1
-num_workers: 10
+num_workers: 4
+
 fid_samples: -1
+roc_auc: false
 
 to_test: false
 track_grad_norm: false
-roc_auc: true
 
 neptune:
   project_name: vklyukin/norm-flows
   experiment_name: tabular
   tags:
-    - rich
+    - tabular
     - student
-    - small
-    - distillation
-    - 4_multiplier
+    - power
+    - kd
+    - perceptual

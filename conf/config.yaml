@@ -1,5 +1,5 @@
 defaults:
-  - dataset: celeba
-  - training: celeba
-  - teacher: celeba
-  - student: celeba
+  - dataset: rich
+  - training: rich
+  - teacher: rich
+  - student: rich

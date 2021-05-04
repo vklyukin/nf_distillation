@@ -1,3 +1,3 @@
 #!/bin/bash
 
-sbatch -t 15000 --gpus=1 -p normal -c 10 train.sh
+sbatch -t 07:00:00 --gpus=1 -p normal -c 4 train.sh

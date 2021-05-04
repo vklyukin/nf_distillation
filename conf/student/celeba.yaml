@@ -4,14 +4,14 @@ student:
     - 64
     - 64
     - 3
-  hidden_channels: 512
-  K: 32
-  L: 4
+  hidden_channels: 256
+  K: 16
+  L: 3
   actnorm_scale: 1.0
   flow_permutation: invconv
-  flow_coupling: additive
+  flow_coupling: affine
   LU_decomposed: true
-  y_classes: 1
+  y_classes: 40
   learn_top: false
   y_condition: false
   checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-03-29/18-03-31/distillation/NF-336/checkpoints/epoch=3-step=10175.ckpt
