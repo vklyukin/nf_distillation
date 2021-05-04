@@ -21,5 +21,5 @@ def preprocess(x):
 def postprocess(x):
     x = torch.clamp(x, -0.5, 0.5)
     x += 0.5
-    x = x * 2 ** n_bits
+    x = x * 255
     return torch.clamp(x, 0, 255).byte()

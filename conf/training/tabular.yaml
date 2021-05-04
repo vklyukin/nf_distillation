@@ -3,20 +3,20 @@ architecture: glow
 learning_rate: 0.0005
 optimizer: adam
 weight_decay: 0.
-n_epochs: 60000
-batch_size: 262144
+n_epochs: 10000
+batch_size: 65536
 
 inherit_p: false
 
 loss:
   nll:
-    weight: 1
+    weight: 0.85
   kd:
     name: mse
-    weight: 0
+    weight: 0.05
   perceptual:
     name: l1
-    weight: 0
+    weight: 0.1
 
 seed: 42
 
@@ -34,5 +34,7 @@ neptune:
   experiment_name: tabular
   tags:
     - tabular
-    - teacher
-    - miniboone
+    - student
+    - power
+    - kd
+    - perceptual

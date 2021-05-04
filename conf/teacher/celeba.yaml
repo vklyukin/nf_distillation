@@ -6,7 +6,7 @@ teacher:
     - 3
   hidden_channels: 512
   K: 32
-  L: 4
+  L: 3
   actnorm_scale: 1.0
   flow_permutation: invconv
   flow_coupling: affine
@@ -14,4 +14,4 @@ teacher:
   y_classes: 1
   learn_top: false
   y_condition: false
-  checkpoint: false
+  checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-15/12-27-00/distillation/NF-462/checkpoints/epoch=53-step=274697.ckpt

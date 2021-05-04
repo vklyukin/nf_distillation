@@ -5,7 +5,7 @@ student:
     - 32
     - 3
   hidden_channels: 512
-  K: 8
+  K: 32
   L: 3
   actnorm_scale: 1.0
   flow_permutation: invconv
@@ -14,5 +14,6 @@ student:
   y_classes: 10
   learn_top: false
   y_condition: false
-  checkpoint: false
+  checkpoint: /home/vdklyukin/nf_distillation/data/weights/notop_teacher_0.pth
+#  checkpoint: false
 #  checkpoint: /home/vnkljukin/nf/nf_distillation/outputs/2021-02-08/13-19-59/distillation/NF-227/checkpoints/epoch=30-step=48452.ckpt

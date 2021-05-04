@@ -2,8 +2,8 @@ teacher:
   is_1d: true
   image_shape:
     - 6
-  hidden_channels: 64
-  K: 10
+  hidden_channels: 32
+  K: 5
   L: 1
   actnorm_scale: 1.0
   flow_permutation: invconv
@@ -12,4 +12,4 @@ teacher:
   y_classes: 0
   learn_top: false
   y_condition: false
-  checkpoint: false
+  checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-04/18-19-00/tabular/NF-383/checkpoints/epoch=9924-step=258049.ckpt

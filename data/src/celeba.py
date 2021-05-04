@@ -10,17 +10,22 @@ def get_CelebA(augment, dataroot, download):
     image_shape = (64, 64, 3)
     num_classes = 40
 
-    test_transform = transforms.Compose(
-        [transforms.Resize(image_shape[:-1]), transforms.ToTensor(), preprocess]
-    )
+    test_transform = transforms.Compose([
+        transforms.CenterCrop(160),
+        transforms.Resize(image_shape[:-1]),
+        transforms.ToTensor(),
+        preprocess,
+    ])
 
     if augment:
         transformations = [
+            transforms.CenterCrop(160),
             transforms.Resize(image_shape[:-1]),
             transforms.RandomHorizontalFlip(),
         ]
     else:
         transformations = [
+            transforms.CenterCrop(160),
             transforms.Resize(image_shape[:-1]),
         ]
 

@@ -3,8 +3,8 @@ architecture: glow
 learning_rate: 0.0005
 optimizer: adam
 weight_decay: 0
-n_epochs: 1000
-batch_size: 128
+n_epochs: 100
+batch_size: 16
 
 inherit_p: false
 
@@ -36,4 +36,5 @@ neptune:
   experiment_name: distillation
   tags:
     - cifar10
-    - perceptual
+    - uptrain
+    - teacher

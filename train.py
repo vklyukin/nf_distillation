@@ -43,6 +43,7 @@ def main(config: DictConfig):
     logger.info("Creating trainer")
     trainer = pl.Trainer(
         max_epochs=config["n_epochs"],
+        gradient_clip_val=30,
         checkpoint_callback=model_checkpoint,
         logger=neptune_logger,
         gpus=config["gpus"],
