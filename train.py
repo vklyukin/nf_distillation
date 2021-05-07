@@ -47,7 +47,6 @@ def main(config: DictConfig):
         checkpoint_callback=model_checkpoint,
         logger=neptune_logger,
         gpus=config["gpus"],
-        gradient_clip_val=50,
         weights_summary="full",
         track_grad_norm=2 if config["track_grad_norm"] else -1,
     )

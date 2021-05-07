@@ -17,7 +17,8 @@ class PartialInceptionNetwork(nn.Module):
 
         if checkpoint_path is not None:
             inception_state = torch.load(
-                checkpoint_path, map_location=torch.device("cpu"),
+                checkpoint_path,
+                map_location=torch.device("cpu"),
             )
             self.inception_network.load_state_dict(inception_state)
 
@@ -68,7 +69,7 @@ def get_activations(images, batch_size, checkpoint_path):
     ), "Expected input shape to be: (N,3,299,299)" + ", but got {}".format(images.shape)
 
     num_images = images.shape[0]
-    inception_network = PartialInceptionNetwork(checkpoint_path)
+    inception_network = PartialInceptionNetwork(checkpoint_path).cuda()
     inception_network.eval()
 
     n_batches = int(np.ceil(num_images / batch_size))
@@ -77,7 +78,7 @@ def get_activations(images, batch_size, checkpoint_path):
         start_idx = batch_size * batch_idx
         end_idx = batch_size * (batch_idx + 1)
 
-        ims = images[start_idx:end_idx]
+        ims = images[start_idx:end_idx].cuda()
 
         with torch.no_grad():
             activations = inception_network(ims)
