@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader
 from torchvision.utils import make_grid
 
 import data.src as data_utils
-from metrics import calculate_fid, calculate_roc_auc
+from metrics import calculate_fid, calculate_roc_auc, make_figures, weighted_ks
 from models import (
     create_glow_model,
     gaussian_sample,
@@ -87,7 +87,7 @@ class NFModel(pl.LightningModule):
             return [], []
 
         student_kd_indices = []
-        multiplier_1d = 4
+        multiplier_1d = 2
         for i, layer in enumerate(self.student.flow.layers):
             if (
                 isinstance(layer, SqueezeLayer)
@@ -227,13 +227,20 @@ class NFModel(pl.LightningModule):
             teacher_z = None
 
         if self.perceptual_weight > 0:
-            y_onehot = torch.zeros((self.params["batch_size"],))
-            mean, logs = self.student.prior(None, y_onehot=y_onehot)
+            if self.params["student"]["y_condition"]:
+                y_onehot = y
+            else:
+                y_onehot = None
+            mean, logs = self.student.prior(x, y_onehot=y_onehot)
             latent = gaussian_sample(mean, logs, 1)
 
-            student_x = self.student(z=latent, temperature=1, reverse=True)[-1]
+            student_x = self.student(
+                z=latent, temperature=0.7, reverse=True, y_onehot=y_onehot
+            )[-1]
             with torch.no_grad():
-                teacher_x = self.teacher(z=latent, temperature=1, reverse=True)[-1]
+                teacher_x = self.teacher(
+                    z=latent, temperature=0.7, reverse=True, y_onehot=y_onehot
+                )[-1]
         else:
             student_x = None
             teacher_x = None
@@ -282,6 +289,9 @@ class NFModel(pl.LightningModule):
             partial_perceptual_loss = partial_perceptual_loss.mean(
                 dim=list(range(len(partial_perceptual_loss.shape)))[1:]
             )
+            partial_perceptual_loss[
+                (torch.isnan(partial_perceptual_loss)).nonzero(as_tuple=True)[0]
+            ] = 0
 
             if perceptual_loss_value is not None:
                 perceptual_loss_value += partial_perceptual_loss
@@ -294,9 +304,9 @@ class NFModel(pl.LightningModule):
             perceptual_loss_value = torch.tensor(0.0, device=self.device)
 
         result_loss = (
-            self.nll_weight * model_outputs["student_nll"].mean()
-            + self.kd_weight * kd_loss_value.mean()
-            + self.perceptual_weight * perceptual_loss_value.mean()
+            self.nll_weight * model_outputs["student_nll"]
+            + self.kd_weight * kd_loss_value
+            + self.perceptual_weight * perceptual_loss_value
         )
 
         if model_outputs["weights"] is not None:
@@ -306,7 +316,7 @@ class NFModel(pl.LightningModule):
             "nll": model_outputs["student_nll"].mean(),
             "kd": kd_loss_value.mean(),
             "perceptual": perceptual_loss_value.mean(),
-            "result_loss": result_loss,
+            "result_loss": result_loss.mean(),
         }
 
     @torch.no_grad()
@@ -390,6 +400,7 @@ class NFModel(pl.LightningModule):
             "loss": result_loss,
             "generated": generated,
             "real": batch[0],
+            "condition": batch[1],
         }
 
         if self.params["student"]["is_1d"] and self.params["data"]["name"] == "rich":
@@ -454,6 +465,12 @@ class NFModel(pl.LightningModule):
             real = (
                 torch.cat([output["real"] for output in outputs]).detach().cpu().numpy()
             )
+            condition = (
+                torch.cat([output["condition"] for output in outputs])
+                .detach()
+                .cpu()
+                .numpy()
+            )
             weights = (
                 torch.cat([output["weights"] for output in outputs])
                 .detach()
@@ -462,12 +479,59 @@ class NFModel(pl.LightningModule):
             )
 
             if self.params["data"]["name"] == "rich":
+                generated_data = np.concatenate([generated, condition], axis=1)
+                real_data = np.concatenate([real, condition], axis=1)
+
+                generated_data = self.scaler.inverse_transform(generated_data)
+                real_data = self.scaler.inverse_transform(real_data)
+
+                generated = generated_data[:, : generated.shape[1]]
+                real = real_data[:, : real.shape[1]]
+                condition = generated_data[:, generated.shape[1] :]
+
+                dll_columns = [
+                    "RichDLLe",
+                    "RichDLLk",
+                    "RichDLLmu",
+                    "RichDLLp",
+                    "RichDLLbt",
+                ]
+                raw_feature_columns = ["Brunel_P", "Brunel_ETA", "nTracks_Brunel"]
+                generated_df = pd.DataFrame(generated, columns=dll_columns)
+                real_df = pd.DataFrame(real, columns=dll_columns)
+                condition_df = pd.DataFrame(condition, columns=raw_feature_columns)
+
                 self.get_histograms(generated, real)
                 self.trainer.logger.experiment.log_image("histograms.png", x=plt.gcf())
+                plt.clf()
+
+                results_avg, results_max = weighted_ks(
+                    self.params, real_df, generated_df, condition_df, weights
+                )
+                ks_avg = results_avg.mean().mean()
+                ks_max = results_max.max().max()
+
+                self.log("val_epoch_ks_avg", ks_avg)
+                self.log("val_epoch_ks_max", ks_max)
+                results_avg.to_csv("results_avg.csv")
+                results_max.to_csv("results_max.csv")
+                self.trainer.logger.experiment.log_artifact("results_avg.csv")
+                self.trainer.logger.experiment.log_artifact("results_max.csv")
+
+                for name, fig in make_figures(
+                    self.params, condition_df, real_df, generated_df, weights
+                ):
+                    self.trainer.logger.experiment.log_image(
+                        f"{name}_efficiency_plot.png", x=plt.gcf()
+                    )
+                    plt.clf()
 
             if self.params["roc_auc"]:
-                roc_auc = self.calc_roc_auc(generated, real, weights)
+                roc_auc, unweighted_roc_auc = self.calc_roc_auc(
+                    generated, real, weights
+                )
                 self.log("val_epoch_roc_auc", roc_auc)
+                self.log("val_epoch_roc_auc_unweighted", unweighted_roc_auc)
 
     @torch.no_grad()
     def calc_fid(self, fid_mode) -> float:
@@ -588,12 +652,15 @@ class NFModel(pl.LightningModule):
             shuffle=True,
         )
 
-        classifier = CatBoostClassifier(iterations=1000, task_type="CPU", thread_count=10, silent=True)
+        classifier = CatBoostClassifier(
+            iterations=1000, task_type="CPU", thread_count=10, silent=True
+        )
         classifier.fit(X_train, y_train)
         predicted = classifier.predict(X_test)
 
-        roc_auc = calculate_roc_auc(y_test, predicted, weights=weights_test)
-        return roc_auc
+        weighted_roc_auc = calculate_roc_auc(y_test, predicted, weights=weights_test)
+        unweighted_roc_auc = calculate_roc_auc(y_test, predicted)
+        return weighted_roc_auc, unweighted_roc_auc
 
     ####################
     # DATA RELATED HOOKS
@@ -641,7 +708,13 @@ class NFModel(pl.LightningModule):
                 data_description["download"],
             )
             self.scaler = scaler
-        elif dataset_name in ("bsds300", "gas", "hepmass", "miniboone", "power",):
+        elif dataset_name in (
+            "bsds300",
+            "gas",
+            "hepmass",
+            "miniboone",
+            "power",
+        ):
             loaders = {
                 "bsds300": data_utils.get_BSDS300,
                 "gas": data_utils.get_GAS,
@@ -651,7 +724,9 @@ class NFModel(pl.LightningModule):
             }
             (image_shape, num_classes, train_dataset, valid_dataset,) = loaders[
                 dataset_name
-            ](data_description["data_path"],)
+            ](
+                data_description["data_path"],
+            )
         else:
             raise NameError(f"Unknown dataset name: {dataset_name}")
 

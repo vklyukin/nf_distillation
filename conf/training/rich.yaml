@@ -10,13 +10,21 @@ inherit_p: false
 
 loss:
   nll:
-    weight: 0.95
+    weight: 0.85
   kd:
     name: mse
-    weight: 0.05
+    weight: 0.075
   perceptual:
     name: l1
-    weight: 0.
+    weight: 0.075
+
+metric:
+  ks:
+    bins: 20
+  efficiency:
+    make_ratio: True
+    bins: 10
+    thresholds: [0.05,0.10,0.25,0.50,0.75,0.90,0.95]
 
 seed: 42
 
@@ -33,7 +41,7 @@ neptune:
   experiment_name: tabular
   tags:
     - rich
-    - student
     - small
+    - student
     - distillation
-    - 4_multiplier
+    - perceptual
