@@ -1,6 +1,7 @@
 import logging
 import math
 import torch
+import torch.distributions as D
 import torch.nn as nn
 
 from .layers import (
@@ -13,6 +14,9 @@ from .layers import (
     LinearZeros,
     SqueezeLayer,
     Split2d,
+    MADE,
+    ARMLP,
+    InvertiblePermutation,
     gaussian_likelihood,
     gaussian_sample,
 )
@@ -436,3 +440,75 @@ class Glow(nn.Module):
         for name, module in self.named_modules():
             if isinstance(module, ActNorm2d) or isinstance(module, ActNorm1d):
                 module.inited = True
+
+
+# --------------------
+# MAF
+# --------------------
+
+
+class MAF(nn.Module):
+    """Masked Autoregressive Flow Model"""
+
+    def __init__(self, input_shape, num_blocks):
+        super().__init__()
+        self.register_buffer("placeholder", torch.randn(1))
+        self.num_inputs = input_shape[0]
+
+        flows = []
+        for _ in range(num_blocks - 1):
+            flows += [
+                MADE(dim=self.num_inputs, base_network=ARMLP),
+                InvertiblePermutation(dim=self.num_inputs),
+            ]
+        flows.append(MADE(dim=self.num_inputs, base_network=ARMLP))
+
+        self.flows = nn.ModuleList(flows)
+
+    def forward(self, x=None, y_onehot=None, z=None, temperature=None, reverse=False):
+        if reverse:
+            return self.reverse_flow(z, y_onehot, temperature)
+        else:
+            return self.normal_flow(x, y_onehot)
+
+    def normal_flow(self, x, context=None):
+        m, _ = x.shape
+        log_det = torch.zeros(m, device=self.placeholder.device)
+
+        for flow in self.flows:
+            x, ld = flow.forward(x, context=context)
+            log_det += ld
+
+        mean, logs = self.prior(x)
+        z, prior_logprob = x, gaussian_likelihood(mean, logs, x)
+
+        log_prob = prior_logprob + log_det
+
+        return z, -log_prob, None
+
+    def reverse_flow(self, z, context=None, temperature=None):
+        if z is None:
+            mean, logs = self.prior(z)
+            z = gaussian_sample(mean, logs, temperature)
+
+        m, _ = z.shape
+        log_det = torch.zeros(m, device=self.placeholder.device)
+
+        for flow in reversed(self.flows):
+            z, ld = flow.inverse(z, context=context)
+            log_det += ld
+
+        x = z
+        return x
+
+    def prior(self, data, *args):
+        if data is None:
+            batch_size = 32
+        else:
+            batch_size = data.size(0)
+
+        device = self.placeholder.device
+        means = torch.zeros(batch_size, self.num_inputs, device=device)
+        logs = torch.zeros(batch_size, self.num_inputs, device=device)
+
+        return means, logs

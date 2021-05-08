@@ -5,11 +5,12 @@ teacher:
   hidden_channels: 32
   K: 5
   L: 1
-  actnorm_scale: 1.0
-  flow_permutation: invconv
-  flow_coupling: affine
-  LU_decomposed: true
-  y_classes: 0
-  learn_top: false
+  checkpoint: false
   y_condition: false
-  checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-04/18-19-00/tabular/NF-383/checkpoints/epoch=9924-step=258049.ckpt
+  # actnorm_scale: 1.0
+  # flow_permutation: invconv
+  # flow_coupling: affine
+  # LU_decomposed: true
+  # y_classes: 0
+  # learn_top: false
+  # checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-04/18-19-00/tabular/NF-383/checkpoints/epoch=9924-step=258049.ckpt

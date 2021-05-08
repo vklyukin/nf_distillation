@@ -3,13 +3,15 @@ student:
   image_shape:
     - 8
   hidden_channels: 16
-  K: 3
+  K: 6
   L: 1
-  actnorm_scale: 1.0
-  flow_permutation: invconv
-  flow_coupling: affine
-  LU_decomposed: true
-  y_classes: 0
-  learn_top: false
   y_condition: false
-  checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-18/16-52-08/tabular/NF-485/checkpoints/epoch=9971-step=139607.ckpt
+  checkpoint: false
+#  actnorm_scale: 1.0
+#  flow_permutation: invconv
+#  flow_coupling: affine
+#  LU_decomposed: true
+#  y_classes: 0
+#  learn_top: false
+#  y_condition: false
+#  checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-18/16-52-08/tabular/NF-485/checkpoints/epoch=9971-step=139607.ckpt

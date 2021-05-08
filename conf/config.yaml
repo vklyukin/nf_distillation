@@ -1,5 +1,5 @@
 defaults:
-  - dataset: rich
-  - training: rich
-  - teacher: rich
-  - student: rich
+  - dataset: power
+  - training: tabular
+  - teacher: power
+  - student: power
