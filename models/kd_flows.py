@@ -158,18 +158,18 @@ class GlowGetAllOutputs(Glow):
 
 
 class MAFGetAllOutputs(MAF):
-    def __init__(self, input_shape, num_blocks):
-        super().__init__(input_shape, num_blocks)
+    def __init__(self, input_shape, num_blocks, hidden_channels):
+        super().__init__(input_shape, num_blocks, hidden_channels)
 
-    def normal_flow(self, x, context=None):
+    def normal_flow(self, x, y_onehot=None):
         m, _ = x.shape
         log_det = torch.zeros(m, device=self.placeholder.device)
 
         outputs = []
         layer_input = x
 
-        for flow in self.flows:
-            layer_output, ld = flow.forward(layer_input, context=context)
+        for flow in self.flow:
+            layer_output, ld = flow.forward(layer_input, y_onehot=y_onehot)
             log_det += ld
 
             outputs.append(layer_output)
@@ -179,11 +179,10 @@ class MAFGetAllOutputs(MAF):
         prior_logprob = gaussian_likelihood(mean, logs, layer_output)
 
         log_prob = prior_logprob + log_det
-        print(-prior_logprob.mean(), -log_det.mean())
 
         return outputs, -log_prob, None
 
-    def reverse_flow(self, z, context=None, temperature=None):
+    def reverse_flow(self, z, y_onehot=None, temperature=None):
         if z is None:
             mean, logs = self.prior(z)
             z = gaussian_sample(mean, logs, temperature)
@@ -192,11 +191,9 @@ class MAFGetAllOutputs(MAF):
         layer_input = z
 
         m, _ = z.shape
-        log_det = torch.zeros(m, device=self.placeholder.device)
 
-        for flow in reversed(self.flows):
-            layer_output, ld = flow.inverse(layer_input, context=context)
-            log_det += ld
+        for flow in reversed(self.flow):
+            layer_output, ld = flow(layer_input, y_onehot=y_onehot, reverse=True)
 
             outputs.append(layer_output)
             layer_input = layer_output
@@ -212,7 +209,11 @@ def create_glow_model(config: tp.Dict[str, tp.Any]) -> GlowGetAllOutputs:
 
 
 def create_maf_model(config: tp.Dict[str, tp.Any]) -> MAF:
-    model = MAFGetAllOutputs(input_shape=config["image_shape"], num_blocks=config["K"])
+    model = MAFGetAllOutputs(
+        input_shape=config["image_shape"],
+        num_blocks=config["K"],
+        hidden_channels=config["hidden_channels"],
+    )
     return model
 
 

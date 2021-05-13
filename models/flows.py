@@ -15,8 +15,8 @@ from .layers import (
     SqueezeLayer,
     Split2d,
     MADE,
-    ARMLP,
-    InvertiblePermutation,
+    BatchNormFlow,
+    Reverse,
     gaussian_likelihood,
     gaussian_sample,
 )
@@ -417,7 +417,9 @@ class Glow(nn.Module):
         objective += gaussian_likelihood(mean, logs, z)
 
         if self.y_condition:
-            y_logits = self.project_class(z.mean(2).mean(2))
+            if not self.is_1d:
+                z = z.mean(dim=[2, 3])
+            y_logits = self.project_class(z)
         else:
             y_logits = None
 
@@ -450,20 +452,20 @@ class Glow(nn.Module):
 class MAF(nn.Module):
     """Masked Autoregressive Flow Model"""
 
-    def __init__(self, input_shape, num_blocks):
+    def __init__(self, input_shape, num_blocks, hidden_channels):
         super().__init__()
         self.register_buffer("placeholder", torch.randn(1))
         self.num_inputs = input_shape[0]
 
-        flows = []
-        for _ in range(num_blocks - 1):
-            flows += [
-                MADE(dim=self.num_inputs, base_network=ARMLP),
-                InvertiblePermutation(dim=self.num_inputs),
+        flow = []
+        for _ in range(num_blocks):
+            flow += [
+                MADE(self.num_inputs, hidden_channels),
+                BatchNormFlow(self.num_inputs),
+                Reverse(self.num_inputs),
             ]
-        flows.append(MADE(dim=self.num_inputs, base_network=ARMLP))
 
-        self.flows = nn.ModuleList(flows)
+        self.flow = nn.ModuleList(flow)
 
     def forward(self, x=None, y_onehot=None, z=None, temperature=None, reverse=False):
         if reverse:
@@ -471,12 +473,12 @@ class MAF(nn.Module):
         else:
             return self.normal_flow(x, y_onehot)
 
-    def normal_flow(self, x, context=None):
+    def normal_flow(self, x, y_onehot=None):
         m, _ = x.shape
         log_det = torch.zeros(m, device=self.placeholder.device)
 
-        for flow in self.flows:
-            x, ld = flow.forward(x, context=context)
+        for flow in self.flow:
+            x, ld = flow.forward(x, y_onehot=y_onehot)
             log_det += ld
 
         mean, logs = self.prior(x)
@@ -486,17 +488,15 @@ class MAF(nn.Module):
 
         return z, -log_prob, None
 
-    def reverse_flow(self, z, context=None, temperature=None):
+    def reverse_flow(self, z, y_onehot=None, temperature=None):
         if z is None:
             mean, logs = self.prior(z)
             z = gaussian_sample(mean, logs, temperature)
 
         m, _ = z.shape
-        log_det = torch.zeros(m, device=self.placeholder.device)
 
-        for flow in reversed(self.flows):
-            z, ld = flow.inverse(z, context=context)
-            log_det += ld
+        for flow in reversed(self.flow):
+            z, _ = flow(z, y_onehot=y_onehot, reverse=True)
 
         x = z
         return x

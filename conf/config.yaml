@@ -1,5 +1,5 @@
 defaults:
-  - dataset: power
+  - dataset: bsds300
   - training: tabular
-  - teacher: power
-  - student: power
+  - teacher: bsds300
+  - student: bsds300

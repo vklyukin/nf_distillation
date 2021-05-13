@@ -427,147 +427,141 @@ class InvertibleConv1x1(nn.Module):
 # --------------------
 
 
-class MLP(nn.Module):
+class MaskedLinear(nn.Module):
     def __init__(
-        self, in_features, out_features, hidden_features=32, depth=5, context_dim=0
+        self, in_features, out_features, mask, cond_in_features=None, bias=True
     ):
-        super().__init__()
-        self.net = [
-            nn.Linear(in_features + int(context_dim), hidden_features),
-            nn.BatchNorm1d(hidden_features),
-            nn.ReLU(),
-        ]
-        for _ in range(1, depth - 1):
-            self.net.append(nn.Linear(hidden_features, hidden_features))
-            self.net.append(nn.BatchNorm1d(hidden_features))
-            self.net.append(nn.ReLU())
-        self.net[-1] = nn.Tanh()
-        self.net.append(nn.Linear(hidden_features, out_features))
-        self.net = nn.Sequential(*self.net)
-
-    def forward(self, x, context=None):
-        if context is not None:
-            return self.net(torch.cat([context, x], dim=1))
-        return self.net(x)
-
-
-class ARMLP(nn.Module):
-    def __init__(
-        self, in_features, out_features, hidden_features=32, depth=5, context_dim=0
-    ):
-        super().__init__()
-        assert out_features % in_features == 0, "nout must be integer multiple of nin"
-        self.in_features = in_features
-        self.out_features = out_features
-        self.hidden_features = hidden_features
-        self.depth = depth
-
-        self.net = [
-            MaskedLinear(in_features, hidden_features),
-            nn.BatchNorm1d(hidden_features),
-            nn.ReLU(),
-        ]
-        for i in range(1, depth - 1):
-            self.net.append(MaskedLinear(hidden_features, hidden_features))
-            self.net.append(nn.BatchNorm1d(hidden_features))
-            self.net.append(nn.ReLU())
-        self.net[-1] = nn.Tanh()
-        self.net.append(MaskedLinear(hidden_features, out_features))
-
-        self.net = nn.Sequential(*self.net)
-        if context_dim > 0:
-            self.context_net = MLP(context_dim, out_features, hidden_features, depth)
+        super(MaskedLinear, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        if cond_in_features is not None:
+            self.cond_linear = nn.Linear(cond_in_features, out_features, bias=False)
+            self.conditional = True
         else:
-            self.context_net = None
-        self.seed = 0  # for cycling through num_masks orderings
-        self.update_masks()  # builds the initial m_dict connectivity
+            self.conditional = False
 
-    def update_masks(self):
-        # fetch the next seed and construct a random stream
-        rng = np.random.RandomState(self.seed)
+        self.register_buffer("mask", mask)
 
-        # sample the order of the inputs and the connectivity of all neurons
-        m_dict = {-1: np.arange(self.in_features)}
-
-        for l in range(self.depth):
-            m_dict[l] = rng.randint(
-                m_dict[l - 1].min(), self.in_features - 1, size=self.hidden_features
-            )
-        # construct the mask matrices
-        masks = [
-            m_dict[l - 1][:, None] <= m_dict[l][None, :] for l in range(self.depth - 1)
-        ]
-        masks.append(m_dict[self.depth - 1][:, None] < m_dict[-1][None, :])
-
-        # handle the case where nout = nin * k, for integer k > 1
-        if self.out_features > self.in_features:
-            k = self.out_features // self.in_features
-            # replicate the mask across the other outputs
-            masks[-1] = np.concatenate([masks[-1]] * k, axis=1)
-
-        layers = [l for l in self.net.modules() if isinstance(l, MaskedLinear)]
-        for ind, (l, m) in enumerate(zip(layers, masks)):
-            l.set_mask(m)
-
-    def forward(self, x, context=None):
-        if context is not None and self.context_net is not None:
-            return torch.sigmoid(self.context_net(context)) * self.net(x)
-        return self.net(x)
-
-
-class MaskedLinear(nn.Linear):
-    """same as Linear except has a configurable mask on the weights"""
-
-    def __init__(self, in_features, out_features, bias=True):
-        super().__init__(in_features, out_features, bias)
-        self.register_buffer("mask", torch.zeros(out_features, in_features))
-
-    def forward(self, input):
-        return F.linear(input, self.mask * self.weight, self.bias)
-
-    def set_mask(self, mask):
-        self.mask.data.copy_(torch.from_numpy(mask.astype(np.uint8).T))
-
-
-class InvertiblePermutation(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.register_buffer("placeholder", torch.randn(1))
-        self.perm = nn.Parameter(torch.randperm(dim), requires_grad=False)
-        self.inv_perm = nn.Parameter(torch.argsort(self.perm), requires_grad=False)
-
-    def forward(self, x, context=None):
-        return x[:, self.perm], torch.tensor(0.0, device=self.placeholder.device)
-
-    def inverse(self, z, context=None):
-        return z[:, self.inv_perm], torch.tensor(0.0, device=self.placeholder.device)
+    def forward(self, inputs, y_onehot=None):
+        output = F.linear(inputs, self.linear.weight * self.mask, self.linear.bias)
+        if self.conditional:
+            output += self.cond_linear(y_onehot)
+        return output
 
 
 class MADE(nn.Module):
-    """MADE layer for fast forward"""
+    """An implementation of MADE
+    (https://arxiv.org/abs/1502.03509).
+    """
 
-    def __init__(self, dim, base_network, **base_network_kwargs):
-        super().__init__()
-        self.register_buffer("placeholder", torch.randn(1))
-        self.dim = dim
-        self.net = base_network(dim, dim * 2, **base_network_kwargs)
+    def __init__(
+        self,
+        num_inputs,
+        num_hidden,
+        num_cond_inputs=None,
+        act="relu",
+        pre_exp_tanh=False,
+    ):
+        super(MADE, self).__init__()
 
-    def forward(self, x, context=None):
-        # here we see that we are evaluating all of z in parallel, so density estimation will be fast
-        st = self.net(x, context=context)
-        s, t = st.split(self.dim, dim=1)
-        t = torch.clamp(t, -6, 6)
-        z = (x - s) * torch.exp(-t)
-        return z, -t.sum(dim=1)
+        activations = {"relu": nn.ReLU, "sigmoid": nn.Sigmoid, "tanh": nn.Tanh}
+        act_func = activations[act]
 
-    def inverse(self, z, context=None):
-        # we have to decode the x one at a time, sequentially
-        x = torch.zeros_like(z)
-        for i in range(self.dim):
-            st = self.net(
-                x.clone(), context=context
-            )  # clone to avoid in-place op errors if using IAF
-            s, t = st.split(self.dim, dim=1)
-            t = torch.clamp(t, -6, 6)
-            x[:, i] = z[:, i] * torch.exp(t[:, i]) + s[:, i]
-        return x, t.sum(dim=1)
+        input_mask = get_mask(num_inputs, num_hidden, num_inputs, mask_type="input")
+        hidden_mask = get_mask(num_hidden, num_hidden, num_inputs)
+        output_mask = get_mask(
+            num_hidden, num_inputs * 2, num_inputs, mask_type="output"
+        )
+
+        self.joiner = MaskedLinear(num_inputs, num_hidden, input_mask, num_cond_inputs)
+
+        self.trunk = nn.Sequential(
+            act_func(),
+            MaskedLinear(num_hidden, num_hidden, hidden_mask),
+            act_func(),
+            MaskedLinear(num_hidden, num_inputs * 2, output_mask),
+        )
+
+    def forward(self, inputs, y_onehot=None, reverse=False):
+        if not reverse:
+            h = self.joiner(inputs, y_onehot)
+            m, a = self.trunk(h).chunk(2, 1)
+            u = (inputs - m) * torch.exp(-a)
+            return u, -a.sum(-1)
+        else:
+            x = torch.zeros_like(inputs)
+            for i_col in range(inputs.shape[1]):
+                h = self.joiner(x, y_onehot)
+                m, a = self.trunk(h).chunk(2, 1)
+                x[:, i_col] = inputs[:, i_col] * torch.exp(a[:, i_col]) + m[:, i_col]
+            return x, -a.sum(-1)
+
+
+class BatchNormFlow(nn.Module):
+    """An implementation of a batch normalization layer from
+    Density estimation using Real NVP
+    (https://arxiv.org/abs/1605.08803).
+    """
+
+    def __init__(self, num_inputs, momentum=0.0, eps=1e-5):
+        super(BatchNormFlow, self).__init__()
+
+        self.log_gamma = nn.Parameter(torch.zeros(num_inputs))
+        self.beta = nn.Parameter(torch.zeros(num_inputs))
+        self.momentum = momentum
+        self.eps = eps
+
+        self.register_buffer("running_mean", torch.zeros(num_inputs))
+        self.register_buffer("running_var", torch.ones(num_inputs))
+
+    def forward(self, inputs, y_onehot=None, reverse=False):
+        if not reverse:
+            if self.training:
+                self.batch_mean = inputs.mean(0)
+                self.batch_var = (inputs - self.batch_mean).pow(2).mean(0) + self.eps
+
+                self.running_mean.mul_(self.momentum)
+                self.running_var.mul_(self.momentum)
+
+                self.running_mean.add_(self.batch_mean.data * (1 - self.momentum))
+                self.running_var.add_(self.batch_var.data * (1 - self.momentum))
+
+                mean = self.batch_mean
+                var = self.batch_var
+            else:
+                mean = self.running_mean
+                var = self.running_var
+
+            x_hat = (inputs - mean) / var.sqrt()
+            y = torch.exp(self.log_gamma) * x_hat + self.beta
+            return y, (self.log_gamma - 0.5 * torch.log(var)).sum(-1)
+        else:
+            if self.training:
+                mean = self.batch_mean
+                var = self.batch_var
+            else:
+                mean = self.running_mean
+                var = self.running_var
+
+            x_hat = (inputs - self.beta) / torch.exp(self.log_gamma)
+
+            y = x_hat * var.sqrt() + mean
+
+            return y, (-self.log_gamma + 0.5 * torch.log(var)).sum(-1)
+
+
+class Reverse(nn.Module):
+    """An implementation of a reversing layer from
+    Density estimation using Real NVP
+    (https://arxiv.org/abs/1605.08803).
+    """
+
+    def __init__(self, num_inputs):
+        super(Reverse, self).__init__()
+        self.perm = np.array(np.arange(0, num_inputs)[::-1])
+        self.inv_perm = np.argsort(self.perm)
+
+    def forward(self, inputs, y_onehot=None, reverse=False):
+        if not reverse:
+            return inputs[:, self.perm], torch.tensor(0, device=inputs.device)
+        else:
+            return inputs[:, self.inv_perm], torch.tensor(0, device=inputs.device)

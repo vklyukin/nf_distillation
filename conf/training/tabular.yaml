@@ -10,10 +10,10 @@ inherit_p: false
 
 loss:
   nll:
-    weight: 1.0
+    weight: 0.9
   kd:
     name: mse
-    weight: 0.
+    weight: 0.1
   perceptual:
     name: l1
     weight: 0.
@@ -33,7 +33,7 @@ neptune:
   project_name: vklyukin/norm-flows
   experiment_name: tabular
   tags:
-    - tabular
-    - teacher
-    - power
-    - maf
+    - bsds300
+    - student
+    - kd
+    - made

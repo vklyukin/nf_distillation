@@ -87,26 +87,41 @@ class NFModel(pl.LightningModule):
         ):
             return [], []
 
+        student_layers = (
+            self.student.flow.layers
+            if self.params["architecture"] == "glow"
+            else self.student.flow
+        )
+        teacher_layers = (
+            self.teacher.flow.layers
+            if self.params["architecture"] == "glow"
+            else self.teacher.flow
+        )
+        print(len(student_layers), len(teacher_layers))
+
         student_kd_indices = []
-        multiplier_1d = 2
-        for i, layer in enumerate(self.student.flow.layers):
+        multiplier_1d = 3
+
+        for i, layer in enumerate(student_layers):
             if (
                 isinstance(layer, SqueezeLayer)
                 or self.params["student"]["is_1d"]
-                and (i + 1) % multiplier_1d == 0
-                or i + 1 == len(self.student.flow.layers)
+                and (i + 1) % multiplier_1d == 1
+                or i + 1 == len(student_layers)
             ):
                 student_kd_indices.append(i)
 
         teacher_kd_indices = []
-        for i, layer in enumerate(self.teacher.flow.layers):
+        for i, layer in enumerate(teacher_layers):
             if (
                 isinstance(layer, SqueezeLayer)
                 or self.params["student"]["is_1d"]
-                and (i + 1) % (2 * multiplier_1d) == 0
-                or i + 1 == len(self.teacher.flow.layers)
+                and (i + 1) % (3 * multiplier_1d) == 1
+                or i + 1 == len(teacher_layers)
             ):
                 teacher_kd_indices.append(i)
+
+        print(student_kd_indices, teacher_kd_indices)
 
         return student_kd_indices, teacher_kd_indices
 
@@ -124,6 +139,8 @@ class NFModel(pl.LightningModule):
                 for k, v in torch.load(checkpoint_path)["state_dict"].items()
                 if k.startswith("student.")
             }
+
+        model_state = {k.replace("flows", "flow"): v for k, v in model_state.items()}
 
         model.load_state_dict(model_state)
 
