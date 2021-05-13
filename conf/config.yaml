@@ -1,5 +1,5 @@
 defaults:
-  - dataset: rich
-  - training: rich
-  - teacher: rich
-  - student: rich
+  - dataset: bsds300
+  - training: tabular
+  - teacher: bsds300
+  - student: bsds300

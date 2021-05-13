@@ -2,7 +2,7 @@ student:
   is_1d: true
   image_shape:
     - 63
-  hidden_channels: 16
+  hidden_channels: 32
   K: 3
   L: 1
   actnorm_scale: 1.0
@@ -12,4 +12,5 @@ student:
   y_classes: 0
   learn_top: false
   y_condition: false
-  checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-17/12-56-45/tabular/NF-480/checkpoints/epoch=9988-step=159823.ckpt
+  checkpoint: false
+# checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-17/12-56-45/tabular/NF-480/checkpoints/epoch=9988-step=159823.ckpt

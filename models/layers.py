@@ -1,10 +1,11 @@
 import math
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions as D
 
-from .utils import split_feature, compute_same_pad
+from .utils import split_feature, compute_same_pad, get_mask
 
 
 def gaussian_p(mean, logs, x):
@@ -419,3 +420,148 @@ class InvertibleConv1x1(nn.Module):
                 logdet = logdet - dlogdet
 
         return z, logdet
+
+
+# --------------------
+# MAF layers
+# --------------------
+
+
+class MaskedLinear(nn.Module):
+    def __init__(
+        self, in_features, out_features, mask, cond_in_features=None, bias=True
+    ):
+        super(MaskedLinear, self).__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        if cond_in_features is not None:
+            self.cond_linear = nn.Linear(cond_in_features, out_features, bias=False)
+            self.conditional = True
+        else:
+            self.conditional = False
+
+        self.register_buffer("mask", mask)
+
+    def forward(self, inputs, y_onehot=None):
+        output = F.linear(inputs, self.linear.weight * self.mask, self.linear.bias)
+        if self.conditional:
+            output += self.cond_linear(y_onehot)
+        return output
+
+
+class MADE(nn.Module):
+    """An implementation of MADE
+    (https://arxiv.org/abs/1502.03509).
+    """
+
+    def __init__(
+        self,
+        num_inputs,
+        num_hidden,
+        num_cond_inputs=None,
+        act="relu",
+        pre_exp_tanh=False,
+    ):
+        super(MADE, self).__init__()
+
+        activations = {"relu": nn.ReLU, "sigmoid": nn.Sigmoid, "tanh": nn.Tanh}
+        act_func = activations[act]
+
+        input_mask = get_mask(num_inputs, num_hidden, num_inputs, mask_type="input")
+        hidden_mask = get_mask(num_hidden, num_hidden, num_inputs)
+        output_mask = get_mask(
+            num_hidden, num_inputs * 2, num_inputs, mask_type="output"
+        )
+
+        self.joiner = MaskedLinear(num_inputs, num_hidden, input_mask, num_cond_inputs)
+
+        self.trunk = nn.Sequential(
+            act_func(),
+            MaskedLinear(num_hidden, num_hidden, hidden_mask),
+            act_func(),
+            MaskedLinear(num_hidden, num_inputs * 2, output_mask),
+        )
+
+    def forward(self, inputs, y_onehot=None, reverse=False):
+        if not reverse:
+            h = self.joiner(inputs, y_onehot)
+            m, a = self.trunk(h).chunk(2, 1)
+            u = (inputs - m) * torch.exp(-a)
+            return u, -a.sum(-1)
+        else:
+            x = torch.zeros_like(inputs)
+            for i_col in range(inputs.shape[1]):
+                h = self.joiner(x, y_onehot)
+                m, a = self.trunk(h).chunk(2, 1)
+                x[:, i_col] = inputs[:, i_col] * torch.exp(a[:, i_col]) + m[:, i_col]
+            return x, -a.sum(-1)
+
+
+class BatchNormFlow(nn.Module):
+    """An implementation of a batch normalization layer from
+    Density estimation using Real NVP
+    (https://arxiv.org/abs/1605.08803).
+    """
+
+    def __init__(self, num_inputs, momentum=0.0, eps=1e-5):
+        super(BatchNormFlow, self).__init__()
+
+        self.log_gamma = nn.Parameter(torch.zeros(num_inputs))
+        self.beta = nn.Parameter(torch.zeros(num_inputs))
+        self.momentum = momentum
+        self.eps = eps
+
+        self.register_buffer("running_mean", torch.zeros(num_inputs))
+        self.register_buffer("running_var", torch.ones(num_inputs))
+
+    def forward(self, inputs, y_onehot=None, reverse=False):
+        if not reverse:
+            if self.training:
+                self.batch_mean = inputs.mean(0)
+                self.batch_var = (inputs - self.batch_mean).pow(2).mean(0) + self.eps
+
+                self.running_mean.mul_(self.momentum)
+                self.running_var.mul_(self.momentum)
+
+                self.running_mean.add_(self.batch_mean.data * (1 - self.momentum))
+                self.running_var.add_(self.batch_var.data * (1 - self.momentum))
+
+                mean = self.batch_mean
+                var = self.batch_var
+            else:
+                mean = self.running_mean
+                var = self.running_var
+
+            x_hat = (inputs - mean) / var.sqrt()
+            y = torch.exp(self.log_gamma) * x_hat + self.beta
+            return y, (self.log_gamma - 0.5 * torch.log(var)).sum(-1)
+        else:
+            if self.training:
+                mean = self.batch_mean
+                var = self.batch_var
+            else:
+                mean = self.running_mean
+                var = self.running_var
+
+            x_hat = (inputs - self.beta) / torch.exp(self.log_gamma)
+
+            y = x_hat * var.sqrt() + mean
+
+            return y, (-self.log_gamma + 0.5 * torch.log(var)).sum(-1)
+
+
+class Reverse(nn.Module):
+    """An implementation of a reversing layer from
+    Density estimation using Real NVP
+    (https://arxiv.org/abs/1605.08803).
+    """
+
+    def __init__(self, num_inputs):
+        super(Reverse, self).__init__()
+        self.perm = np.array(np.arange(0, num_inputs)[::-1])
+        self.inv_perm = np.argsort(self.perm)
+
+    def forward(self, inputs, y_onehot=None, reverse=False):
+        if not reverse:
+            return inputs[:, self.perm], torch.tensor(0, device=inputs.device)
+        else:
+            return inputs[:, self.inv_perm], torch.tensor(0, device=inputs.device)

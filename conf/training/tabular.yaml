@@ -1,4 +1,4 @@
-architecture: glow
+architecture: maf
 
 learning_rate: 0.0005
 optimizer: adam
@@ -10,18 +10,18 @@ inherit_p: false
 
 loss:
   nll:
-    weight: 0.85
+    weight: 0.9
   kd:
     name: mse
-    weight: 0.05
+    weight: 0.1
   perceptual:
     name: l1
-    weight: 0.1
+    weight: 0.
 
 seed: 42
 
 gpus: 1
-num_workers: 4
+num_workers: 2
 
 fid_samples: -1
 roc_auc: false
@@ -33,8 +33,7 @@ neptune:
   project_name: vklyukin/norm-flows
   experiment_name: tabular
   tags:
-    - tabular
+    - bsds300
     - student
-    - power
     - kd
-    - perceptual
+    - made

@@ -4,8 +4,12 @@ import torch
 import torch.nn as nn
 import typing as tp
 
-from .flows import FlowNet, Glow, FlowStep
-from .layers import Split2d, gaussian_likelihood
+from .flows import FlowNet, Glow, FlowStep, MAF
+from .layers import (
+    Split2d,
+    gaussian_likelihood,
+    gaussian_sample,
+)
 from .utils import uniform_binning_correction
 
 
@@ -134,6 +138,7 @@ class GlowGetAllOutputs(Glow):
         last_z = z[-1]
 
         mean, logs = self.prior(x, y_onehot)
+
         objective += gaussian_likelihood(mean, logs, last_z)
 
         if self.y_condition:
@@ -152,6 +157,50 @@ class GlowGetAllOutputs(Glow):
         return z, bpd, y_logits
 
 
+class MAFGetAllOutputs(MAF):
+    def __init__(self, input_shape, num_blocks, hidden_channels):
+        super().__init__(input_shape, num_blocks, hidden_channels)
+
+    def normal_flow(self, x, y_onehot=None):
+        m, _ = x.shape
+        log_det = torch.zeros(m, device=self.placeholder.device)
+
+        outputs = []
+        layer_input = x
+
+        for flow in self.flow:
+            layer_output, ld = flow.forward(layer_input, y_onehot=y_onehot)
+            log_det += ld
+
+            outputs.append(layer_output)
+            layer_input = layer_output
+
+        mean, logs = self.prior(layer_output)
+        prior_logprob = gaussian_likelihood(mean, logs, layer_output)
+
+        log_prob = prior_logprob + log_det
+
+        return outputs, -log_prob, None
+
+    def reverse_flow(self, z, y_onehot=None, temperature=None):
+        if z is None:
+            mean, logs = self.prior(z)
+            z = gaussian_sample(mean, logs, temperature)
+
+        outputs = []
+        layer_input = z
+
+        m, _ = z.shape
+
+        for flow in reversed(self.flow):
+            layer_output, ld = flow(layer_input, y_onehot=y_onehot, reverse=True)
+
+            outputs.append(layer_output)
+            layer_input = layer_output
+
+        return outputs
+
+
 def create_glow_model(config: tp.Dict[str, tp.Any]) -> GlowGetAllOutputs:
     model = GlowGetAllOutputs(**config)
     logger.info("Setting actnorm up")
@@ -159,8 +208,20 @@ def create_glow_model(config: tp.Dict[str, tp.Any]) -> GlowGetAllOutputs:
     return model
 
 
+def create_maf_model(config: tp.Dict[str, tp.Any]) -> MAF:
+    model = MAFGetAllOutputs(
+        input_shape=config["image_shape"],
+        num_blocks=config["K"],
+        hidden_channels=config["hidden_channels"],
+    )
+    return model
+
+
 def inherit_permutation_matrix(
-    student, teacher, student_kd_indices, teacher_kd_indices,
+    student,
+    teacher,
+    student_kd_indices,
+    teacher_kd_indices,
 ):
     current_common_layer_index = 0
     current_permutation_matrix = None

@@ -19,6 +19,7 @@ import data.src as data_utils
 from metrics import calculate_fid, calculate_roc_auc, make_figures, weighted_ks
 from models import (
     create_glow_model,
+    create_maf_model,
     gaussian_sample,
     FlowStep,
     SqueezeLayer,
@@ -86,26 +87,41 @@ class NFModel(pl.LightningModule):
         ):
             return [], []
 
+        student_layers = (
+            self.student.flow.layers
+            if self.params["architecture"] == "glow"
+            else self.student.flow
+        )
+        teacher_layers = (
+            self.teacher.flow.layers
+            if self.params["architecture"] == "glow"
+            else self.teacher.flow
+        )
+        print(len(student_layers), len(teacher_layers))
+
         student_kd_indices = []
-        multiplier_1d = 2
-        for i, layer in enumerate(self.student.flow.layers):
+        multiplier_1d = 3
+
+        for i, layer in enumerate(student_layers):
             if (
                 isinstance(layer, SqueezeLayer)
                 or self.params["student"]["is_1d"]
-                and (i + 1) % multiplier_1d == 0
-                or i + 1 == len(self.student.flow.layers)
+                and (i + 1) % multiplier_1d == 1
+                or i + 1 == len(student_layers)
             ):
                 student_kd_indices.append(i)
 
         teacher_kd_indices = []
-        for i, layer in enumerate(self.teacher.flow.layers):
+        for i, layer in enumerate(teacher_layers):
             if (
                 isinstance(layer, SqueezeLayer)
                 or self.params["student"]["is_1d"]
-                and (i + 1) % (2 * multiplier_1d) == 0
-                or i + 1 == len(self.teacher.flow.layers)
+                and (i + 1) % (3 * multiplier_1d) == 1
+                or i + 1 == len(teacher_layers)
             ):
                 teacher_kd_indices.append(i)
+
+        print(student_kd_indices, teacher_kd_indices)
 
         return student_kd_indices, teacher_kd_indices
 
@@ -123,6 +139,8 @@ class NFModel(pl.LightningModule):
                 for k, v in torch.load(checkpoint_path)["state_dict"].items()
                 if k.startswith("student.")
             }
+
+        model_state = {k.replace("flows", "flow"): v for k, v in model_state.items()}
 
         model.load_state_dict(model_state)
 
@@ -143,6 +161,19 @@ class NFModel(pl.LightningModule):
 
             logger.info("Creating GLOW model")
             model = create_glow_model(model_params)
+
+            checkpoint_path = self.params[model_name]["checkpoint"]
+            if checkpoint_path:
+                logger.info("Loading checkpoint")
+                self.load_checkpoint(model, checkpoint_path)
+
+            return model
+        elif self.params["architecture"].lower() == "maf":
+            model_params = OmegaConf.to_container(self.params[model_name])
+            del model_params["checkpoint"]
+
+            logger.info("Creating MAF model")
+            model = create_maf_model(model_params)
 
             checkpoint_path = self.params[model_name]["checkpoint"]
             if checkpoint_path:
@@ -400,8 +431,10 @@ class NFModel(pl.LightningModule):
             "loss": result_loss,
             "generated": generated,
             "real": batch[0],
-            "condition": batch[1],
         }
+
+        if self.params["student"]["y_condition"]:
+            output["condition"] = batch[1]
 
         if self.params["student"]["is_1d"] and self.params["data"]["name"] == "rich":
             output["weights"] = batch[2]
@@ -465,12 +498,13 @@ class NFModel(pl.LightningModule):
             real = (
                 torch.cat([output["real"] for output in outputs]).detach().cpu().numpy()
             )
-            condition = (
-                torch.cat([output["condition"] for output in outputs])
-                .detach()
-                .cpu()
-                .numpy()
-            )
+            if self.params["student"]["y_condition"]:
+                condition = (
+                    torch.cat([output["condition"] for output in outputs])
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
             weights = (
                 torch.cat([output["weights"] for output in outputs])
                 .detach()
