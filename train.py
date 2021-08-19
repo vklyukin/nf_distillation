@@ -52,6 +52,7 @@ def main(config: DictConfig):
 
     logger.info("Setting up logger")
     neptune_logger = NeptuneLogger(
+        api_key=config["neptune"]["api_key"],
         project_name=config["neptune"]["project_name"],
         experiment_name=config["neptune"]["experiment_name"],
         tags=OmegaConf.to_container(config["neptune"]["tags"]),

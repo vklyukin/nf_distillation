@@ -2,8 +2,8 @@ student:
   is_1d: true
   image_shape:
     - 21
-  hidden_channels: 16
-  K: 3
+  hidden_channels: 32 # 16
+  K: 5 # 3
   L: 1
   actnorm_scale: 1.0
   flow_permutation: invconv
