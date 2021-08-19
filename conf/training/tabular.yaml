@@ -30,11 +30,11 @@ to_test: false
 track_grad_norm: false
 
 neptune:
-  project_name: vklyukin/norm-flows
+  project_name: mrartemev.me/norm-flows
   experiment_name: tabular
   tags:
     - tabular
-    - student
+    - teacher
     - power
     - kd
     - perceptual

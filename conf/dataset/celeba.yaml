@@ -1,5 +1,5 @@
 data:
   name: celeba
-  data_path: /home/vdklyukin/nf_distillation/data/
+  data_path: ./data/
   download: false
   augment: true

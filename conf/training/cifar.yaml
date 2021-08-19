@@ -16,25 +16,25 @@ loss:
     weight: 0.1
   perceptual:
     name: l1
-    checkpoint: /home/vdklyukin/nf_distillation/data/weights/vgg16-397923af.pth
+    checkpoint: ./data/weights/vgg16-397923af.pth
     weight: 0
 
 seed: 42
 
 gpus: 1
-num_workers: 10
+num_workers: 16
 
 fid_samples: 2048
-inception_checkpoint: /home/vdklyukin/nf_distillation/data/weights/inception_v3.pth
+inception_checkpoint: ./data/weights/inception_v3.pth
 
 to_test: false
 track_grad_norm: false
 roc_auc: false
 
 neptune:
-  project_name: vklyukin/norm-flows
+  project_name: mrartemev.me/norm-flows
   experiment_name: distillation
   tags:
     - cifar10
-    - student
+    - teacher
     - kd

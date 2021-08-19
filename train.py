@@ -14,6 +14,38 @@ from pl_module import NFModel
 
 logger = logging.getLogger(__name__)
 
+def prepare_config(config):
+    if not os.path.isabs(config.data.path):
+        config.data.data_path = os.path.join(hydra.utils.get_original_cwd(),
+                                             config.data.data_path)
+        logger.info(f"config.data.data_path modified to {config.data.path}")
+
+    if not os.path.isabs(config.student.checkpoint):
+        config.student.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
+                                                         config.student.checkpoint)
+        logger.info(f"config.student.checkpoint modified to {config.student.checkpoint}")
+
+    if not os.path.isabs(config.teacher.checkpoint):
+        config.teacher.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
+                                                         config.teacher.checkpoint)
+        logger.info(f"config.teacher.checkpoint modified to {config.teacher.checkpoint}")
+
+    try:
+        if not os.path.isabs(config.loss.perceptual.checkpoint):
+            config.loss.perceptual.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
+                                                             config.loss.perceptual.checkpoint)
+            logger.info(f"config.loss.perceptual.checkpoint modified to {config.loss.perceptual.checkpoint}")
+    except KeyError as e:
+        logger.info(e)
+
+    try:
+        if not os.path.isabs(config.loss.perceptual.checkpoint):
+            config.loss.perceptual.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
+                                                             config.loss.perceptual.checkpoint)
+            logger.info(f"config.loss.perceptual.checkpoint modified to {config.loss.perceptual.checkpoint}")
+    except KeyError as e:
+        logger.info(e)
+
 
 @hydra.main(config_path="conf", config_name="config")
 def main(config: DictConfig):
@@ -43,7 +75,7 @@ def main(config: DictConfig):
     logger.info("Creating trainer")
     trainer = pl.Trainer(
         max_epochs=config["n_epochs"],
-        gradient_clip_val=30,
+        gradient_clip_val=10,
         checkpoint_callback=model_checkpoint,
         logger=neptune_logger,
         gpus=config["gpus"],

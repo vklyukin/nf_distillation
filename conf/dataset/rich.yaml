@@ -1,6 +1,6 @@
 data:
   name: rich
-  data_path: /home/vdkljukin/nf_distillation/data
+  data_path: ./data
   particle: pion
   drop_weights: false
   download: true

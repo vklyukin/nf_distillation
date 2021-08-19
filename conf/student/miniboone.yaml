@@ -12,4 +12,4 @@ student:
   y_classes: 0
   learn_top: false
   y_condition: false
-  checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-17/13-00-21/tabular/NF-482/checkpoints/epoch=9995-step=9995.ckpt
+  checkpoint: .

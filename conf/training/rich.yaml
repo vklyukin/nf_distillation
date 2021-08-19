@@ -37,7 +37,7 @@ track_grad_norm: false
 roc_auc: true
 
 neptune:
-  project_name: vklyukin/norm-flows
+  project_name: mrartemev.me/norm-flows
   experiment_name: tabular
   tags:
     - rich

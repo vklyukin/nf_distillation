@@ -147,7 +147,10 @@ class NFModel(pl.LightningModule):
             checkpoint_path = self.params[model_name]["checkpoint"]
             if checkpoint_path:
                 logger.info("Loading checkpoint")
-                self.load_checkpoint(model, checkpoint_path)
+                try:
+                    self.load_checkpoint(model, checkpoint_path)
+                except FileNotFoundError as e:
+                    logger.info(f"{e}\nCan't load checkpoint: {checkpoint_path}")
 
             return model
         else:

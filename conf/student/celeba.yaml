@@ -14,4 +14,4 @@ student:
   y_classes: 40
   learn_top: false
   y_condition: false
-  checkpoint: /home/vdklyukin/nf_distillation/outputs/2021-04-19/19-09-29/distillation/NF-495/checkpoints/epoch=180-step=460463.ckpt
+  checkpoint: .
