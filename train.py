@@ -15,10 +15,10 @@ from pl_module import NFModel
 logger = logging.getLogger(__name__)
 
 def prepare_config(config):
-    if not os.path.isabs(config.data.path):
+    if not os.path.isabs(config.data.data_path):
         config.data.data_path = os.path.join(hydra.utils.get_original_cwd(),
                                              config.data.data_path)
-        logger.info(f"config.data.data_path modified to {config.data.path}")
+        logger.info(f"config.data.data_path modified to {config.data.data_path}")
 
     if not os.path.isabs(config.student.checkpoint):
         config.student.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
@@ -49,7 +49,8 @@ def prepare_config(config):
 
 @hydra.main(config_path="conf", config_name="config")
 def main(config: DictConfig):
-
+    prepare_config(config)
+    logger.info(config)
     logger.info("Setting up logger")
     neptune_logger = NeptuneLogger(
         api_key=config["neptune"]["api_key"],
