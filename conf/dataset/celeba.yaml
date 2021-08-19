@@ -1,5 +1,5 @@
 data:
   name: celeba
   data_path: ./data/
-  download: false
+  download: true
   augment: true
