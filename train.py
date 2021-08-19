@@ -35,7 +35,7 @@ def prepare_config(config):
             config.loss.perceptual.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
                                                              config.loss.perceptual.checkpoint)
             logger.info(f"config.loss.perceptual.checkpoint modified to {config.loss.perceptual.checkpoint}")
-    except KeyError as e:
+    except Exception as e:
         logger.info(e)
 
     try:
@@ -43,7 +43,7 @@ def prepare_config(config):
             config.loss.perceptual.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
                                                              config.loss.perceptual.checkpoint)
             logger.info(f"config.loss.perceptual.checkpoint modified to {config.loss.perceptual.checkpoint}")
-    except KeyError as e:
+    except Exception as e:
         logger.info(e)
 
 
@@ -78,7 +78,7 @@ def main(config: DictConfig):
     trainer = pl.Trainer(
         max_epochs=config["n_epochs"],
         gradient_clip_val=10,
-        checkpoint_callback=model_checkpoint,
+        callbacks=[model_checkpoint],
         logger=neptune_logger,
         gpus=config["gpus"],
         weights_summary="full",
