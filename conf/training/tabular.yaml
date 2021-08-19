@@ -32,6 +32,7 @@ track_grad_norm: false
 neptune:
   project_name: mrartemev.me/norm-flows
   experiment_name: tabular
+  api_key: eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIzN2Y0YjdlNS00MDkyLTRjZDYtOTM5Yi1kMDJkYTk5YzExY2QifQ==
   tags:
     - tabular
     - teacher
