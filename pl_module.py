@@ -142,9 +142,9 @@ class NFModel(pl.LightningModule):
             del model_params["checkpoint"]
 
             logger.info("Creating GLOW model")
-            model = create_glow_model(model_params)
-
             checkpoint_path = self.params[model_name]["checkpoint"]
+            model = create_glow_model(model_params, bool(checkpoint_path))
+
             if checkpoint_path:
                 logger.info("Loading checkpoint")
                 try:

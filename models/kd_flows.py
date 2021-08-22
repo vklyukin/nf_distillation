@@ -152,15 +152,23 @@ class GlowGetAllOutputs(Glow):
         return z, bpd, y_logits
 
 
-def create_glow_model(config: tp.Dict[str, tp.Any]) -> GlowGetAllOutputs:
+def create_glow_model(
+    config: tp.Dict[str, tp.Any], is_inited: bool
+) -> GlowGetAllOutputs:
     model = GlowGetAllOutputs(**config)
     logger.info("Setting actnorm up")
-    model.set_actnorm_init()
+
+    if not is_inited:
+        model.set_actnorm_init()
+
     return model
 
 
 def inherit_permutation_matrix(
-    student, teacher, student_kd_indices, teacher_kd_indices,
+    student,
+    teacher,
+    student_kd_indices,
+    teacher_kd_indices,
 ):
     current_common_layer_index = 0
     current_permutation_matrix = None
