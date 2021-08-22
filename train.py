@@ -14,35 +14,49 @@ from pl_module import NFModel
 
 logger = logging.getLogger(__name__)
 
+
 def prepare_config(config):
     if not os.path.isabs(config.data.data_path):
-        config.data.data_path = os.path.join(hydra.utils.get_original_cwd(),
-                                             config.data.data_path)
+        config.data.data_path = os.path.join(
+            hydra.utils.get_original_cwd(), config.data.data_path
+        )
         logger.info(f"config.data.data_path modified to {config.data.data_path}")
 
     if not os.path.isabs(config.student.checkpoint):
-        config.student.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
-                                                         config.student.checkpoint)
-        logger.info(f"config.student.checkpoint modified to {config.student.checkpoint}")
+        config.student.checkpoint = os.path.join(
+            hydra.utils.get_original_cwd(), config.student.checkpoint
+        )
+        logger.info(
+            f"config.student.checkpoint modified to {config.student.checkpoint}"
+        )
 
     if not os.path.isabs(config.teacher.checkpoint):
-        config.teacher.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
-                                                         config.teacher.checkpoint)
-        logger.info(f"config.teacher.checkpoint modified to {config.teacher.checkpoint}")
+        config.teacher.checkpoint = os.path.join(
+            hydra.utils.get_original_cwd(), config.teacher.checkpoint
+        )
+        logger.info(
+            f"config.teacher.checkpoint modified to {config.teacher.checkpoint}"
+        )
 
     try:
         if not os.path.isabs(config.loss.perceptual.checkpoint):
-            config.loss.perceptual.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
-                                                             config.loss.perceptual.checkpoint)
-            logger.info(f"config.loss.perceptual.checkpoint modified to {config.loss.perceptual.checkpoint}")
+            config.loss.perceptual.checkpoint = os.path.join(
+                hydra.utils.get_original_cwd(), config.loss.perceptual.checkpoint
+            )
+            logger.info(
+                f"config.loss.perceptual.checkpoint modified to {config.loss.perceptual.checkpoint}"
+            )
     except Exception as e:
         logger.info(e)
 
     try:
-        if not os.path.isabs(config.loss.perceptual.checkpoint):
-            config.loss.perceptual.checkpoint = os.path.join(hydra.utils.get_original_cwd(),
-                                                             config.loss.perceptual.checkpoint)
-            logger.info(f"config.loss.perceptual.checkpoint modified to {config.loss.perceptual.checkpoint}")
+        if not os.path.isabs(config.inception_checkpoint):
+            config.inception_checkpoint = os.path.join(
+                hydra.utils.get_original_cwd(), config.inception_checkpoint
+            )
+            logger.info(
+                f"config.inception_checkpoint modified to {config.inception_checkpoint}"
+            )
     except Exception as e:
         logger.info(e)
 
