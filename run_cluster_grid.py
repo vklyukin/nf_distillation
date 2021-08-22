@@ -40,19 +40,21 @@ def main():
         )
         processes.append(process)
         pr_count = subprocess.Popen(
-            f"squeue | grep {username} | wc -l", shell=True, stdout=subprocess.PIPE
+            f"squeue -u {username} | wc -l", shell=True, stdout=subprocess.PIPE
         )
         out, err = pr_count.communicate()
-        if int(out) > batch_size:
-            while int(out) > batch_size:
+        out = int(out) - 1
+        if out > batch_size:
+            while out > batch_size:
                 print("Waiting... ")
                 time.sleep(240)
                 pr_count = subprocess.Popen(
-                    f"squeue | grep {username} | wc -l",
+                    f"squeue -u {username} | wc -l",
                     shell=True,
                     stdout=subprocess.PIPE,
                 )
                 out, err = pr_count.communicate()
+                out = int(out) - 1
 
     for process in processes:
         print(process.pid)
