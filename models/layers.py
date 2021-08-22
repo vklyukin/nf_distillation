@@ -81,9 +81,6 @@ class _ActNorm(nn.Module):
         self.inited = False
 
     def initialize_parameters(self, input):
-        if not self.training:
-            raise ValueError("In Eval mode, but ActNorm not inited")
-
         reduction_dim = [0] + ([] if self.is_1d else [2, 3])
 
         with torch.no_grad():

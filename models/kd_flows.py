@@ -158,7 +158,7 @@ def create_glow_model(
     model = GlowGetAllOutputs(**config)
     logger.info("Setting actnorm up")
 
-    if not is_inited:
+    if is_inited:
         model.set_actnorm_init()
 
     return model

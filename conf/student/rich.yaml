@@ -12,4 +12,4 @@ student:
   y_classes: 3
   learn_top: false
   y_condition: true
-  checkpoint: .
+  checkpoint: false
