@@ -21,22 +21,23 @@ def prepare_config(config):
             hydra.utils.get_original_cwd(), config.data.data_path
         )
         logger.info(f"config.data.data_path modified to {config.data.data_path}")
+    if config.student.checkpoint != '.' and config.student.checkpoint != False:
+        if not os.path.isabs(config.student.checkpoint):
+            config.student.checkpoint = os.path.join(
+                hydra.utils.get_original_cwd(), config.student.checkpoint
+            )
+            logger.info(
+                f"config.student.checkpoint modified to {config.student.checkpoint}"
+            )
 
-    if not os.path.isabs(config.student.checkpoint):
-        config.student.checkpoint = os.path.join(
-            hydra.utils.get_original_cwd(), config.student.checkpoint
-        )
-        logger.info(
-            f"config.student.checkpoint modified to {config.student.checkpoint}"
-        )
-
-    if not os.path.isabs(config.teacher.checkpoint):
-        config.teacher.checkpoint = os.path.join(
-            hydra.utils.get_original_cwd(), config.teacher.checkpoint
-        )
-        logger.info(
-            f"config.teacher.checkpoint modified to {config.teacher.checkpoint}"
-        )
+    if config.teacher.checkpoint != '.' and config.teacher.checkpoint != False:
+        if not os.path.isabs(config.teacher.checkpoint):
+            config.teacher.checkpoint = os.path.join(
+                hydra.utils.get_original_cwd(), config.teacher.checkpoint
+            )
+            logger.info(
+                f"config.teacher.checkpoint modified to {config.teacher.checkpoint}"
+            )
 
     try:
         if not os.path.isabs(config.loss.perceptual.checkpoint):
