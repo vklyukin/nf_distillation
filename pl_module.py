@@ -396,6 +396,17 @@ class NFModel(pl.LightningModule):
             + self.perceptual_weight * train_losses["perceptual"]
         )
 
+        if self.params["data"]["name"] in (
+            "bsds300",
+            "gas",
+            "hepmass",
+            "miniboone",
+            "power",
+        ):
+            condition = batch[0]
+        else:
+            condition = batch[1]
+
         output = {
             "nll": train_losses["nll"],
             "kd": train_losses["kd"],
@@ -403,7 +414,7 @@ class NFModel(pl.LightningModule):
             "loss": result_loss,
             "generated": generated,
             "real": batch[0],
-            "condition": batch[1],
+            "condition": condition,
         }
 
         if self.params["student"]["is_1d"] and self.params["data"]["name"] == "rich":
